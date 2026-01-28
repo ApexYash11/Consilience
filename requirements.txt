@@ -1,1 +1,36 @@
-pydantic>=1.10
+# Core Framework
+pydantic>=2.0.0
+python-dotenv>=1.0.0
+
+# API Server
+fastapi>=0.104.0
+uvicorn>=0.24.0
+python-multipart>=0.0.6
+
+# Async Support
+aiohttp>=3.9.0
+aiofiles>=23.0.0
+
+
+# Document Generation
+python-docx>=1.1.0
+reportlab>=4.0.7
+pypdf>=3.17.0
+
+# Web & Data
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+
+# Testing
+pytest>=7.4.3
+pytest-asyncio>=0.21.1
+pytest-cov>=4.1.0
+
+# Development Tools
+black>=23.11.0
+ruff>=0.1.0
+
+# Utilities
+python-dateutil>=2.8.2
+click>=8.1.7
+rich>=13.7.0
