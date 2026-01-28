@@ -1,0 +1,3 @@
+[Research Task] -> [Orchestrator] -> [Agent(s)] -> [Audit Logger]
+
+Orchestrator schedules tasks, sends to agents, collects outputs, and records audit entries.
