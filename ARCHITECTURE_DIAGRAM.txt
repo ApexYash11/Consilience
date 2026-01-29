@@ -1,3 +1,15 @@
-[Research Task] -> [Orchestrator] -> [Agent(s)] -> [Audit Logger]
-
-Orchestrator schedules tasks, sends to agents, collects outputs, and records audit entries.
+[Research Task] -> [FastAPI] -> [Orchestrator]
+                                      |
+                      
+                                                     
+                             
+                  Agents                      Audit Logger 
+               - Planner                     - Intent Log  
+               - Researcher   <----------->  - Tool Trace  
+               - Reviewer                    - Result Store
+                             
+                      
+              
+                 External    
+                 Tools/APIs  
+              

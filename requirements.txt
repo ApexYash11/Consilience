@@ -1,4 +1,4 @@
-# Core Framework
+# Core
 pydantic>=2.0.0
 python-dotenv>=1.0.0
 
@@ -7,15 +7,22 @@ fastapi>=0.104.0
 uvicorn>=0.24.0
 python-multipart>=0.0.6
 
-# Async Support
-aiohttp>=3.9.0
-aiofiles>=23.0.0
+# Agents & LLM (pin exact versions when chosen)
+langchain>=0.0.0
+# langgraph placeholder
+deepagents>=0.0.0
+anthropic>=0.1.0
+openai>=1.0.0  # For OpenRouter integration
 
+# Database
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0
+alembic>=1.12.0
 
-# Document Generation
-python-docx>=1.1.0
-reportlab>=4.0.7
-pypdf>=3.17.0
+# Payments & Auth
+stripe>=5.0.0
+bcrypt>=4.0.0
+pyjwt>=2.8.0
 
 # Web & Data
 requests>=2.31.0

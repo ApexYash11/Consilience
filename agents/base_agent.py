@@ -1,14 +1,16 @@
-from typing import Any, Dict
-from models import AgentSpec
+from abc import ABC, abstractmethod
+from typing import Dict, Any
 
-class BaseAgent:
-    """Simple agent framework. Subclass and implement `act` or `plan`."""
+class BaseAgent(ABC):
+    """
+    Abstract base class for all specialized agents.
+    Ensures consistent interface for the orchestrator.
+    """
+    def __init__(self, name: str, role: str):
+        self.name = name
+        self.role = role
 
-    def __init__(self, spec: AgentSpec):
-        self.spec = spec
-
-    def act(self, task: Any) -> Dict[str, Any]:
-        raise NotImplementedError("Agents must implement `act` or `plan`.")
-
-    def info(self) -> Dict[str, Any]:
-        return {"name": self.spec.name, "role": self.spec.role, "capabilities": self.spec.capabilities}
+    @abstractmethod
+    async def run(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute agent-specific logic."""
+        pass
