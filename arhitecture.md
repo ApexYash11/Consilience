@@ -40,9 +40,9 @@ Consilience is evolving into a production-grade multi-agent research orchestrati
           ▼                                           ▼
 ┌──────────────────────┐                  ┌──────────────────────┐
 │   Auth Service       │                  │  Payment Service     │
-│  - JWT tokens        │                  │  - Stripe SDK        │
-│  - Password hashing  │                  │  - Webhook handlers  │
-│  - User tiers        │                  │  - Usage tracking    │
+│  - Neon-managed auth │                  │  - Stripe SDK        │
+│  - User tiers        │                  │  - Webhook handlers  │
+│                      │                  │  - Usage tracking    │
 └──────────────────────┘                  └──────────────────────┘
           │                                           │
           └─────────────────────┬─────────────────────┘
@@ -107,7 +107,7 @@ Consilience is evolving into a production-grade multi-agent research orchestrati
 │              DATABASE (Neon Serverless PostgreSQL)               │
 │                                                                   │
 │  Tables:                                                          │
-│  • users (id, email, hashed_password, tier, created_at)          │
+│  • users (id, email, tier, created_at)                           │
 │  • subscriptions (user_id, stripe_id, status, plan, started_at)  │
 │  • research_tasks (id, user_id, type, status, cost, result)      │
 │  • agent_actions (id, task_id, agent_id, intent, output, time)   │
@@ -187,8 +187,7 @@ langchain-openai==0.0.2
 openai==1.6.1
 
 # Authentication
-python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
+# Authentication handled by Neon-managed auth / external IdP (no local JWT/password libraries required)
 
 # Payment
 stripe==7.8.0
@@ -210,7 +209,6 @@ python-multipart==0.0.6
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email VARCHAR(255) UNIQUE NOT NULL,
-    hashed_password TEXT NOT NULL,
     subscription_tier VARCHAR(20) DEFAULT 'free', -- 'free' or 'paid'
     is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMP DEFAULT NOW(),
@@ -855,7 +853,6 @@ consilience/
 │   ├── dependencies.py            # Auth dependencies
 │   └── routes/
 │       ├── __init__.py
-│       ├── auth.py                # Auth endpoints
 │       ├── research.py            # Research endpoints
 │       ├── payments.py            # Payment endpoints
 │       └── webhooks.py            # Stripe webhooks
@@ -888,7 +885,6 @@ consilience/
 │
 ├── services/
 │   ├── __init__.py
-│   ├── auth_service.py            # JWT, password hashing
 │   ├── payment_service.py         # Stripe integration
 │   ├── research_service.py        # Research orchestration
 │   ├── cost_estimator.py          # Cost estimation logic
@@ -910,7 +906,7 @@ consilience/
 ├── core/
 │   ├── __init__.py
 │   ├── config.py                  # Settings (from .env)
-│   ├── security.py                # JWT utilities
+│   ├── security.py                # Auth utilities (Neon integration)
 │   └── exceptions.py              # Custom exceptions
 │
 ├── tests/
@@ -946,20 +942,19 @@ consilience/
    - Configure CORS, middleware
    - Create health check endpoint
 
-3. **Authentication**
-   - Implement user registration (email + password)
-   - Password hashing with bcrypt
-   - JWT token generation
-   - Login endpoint
-   - Protected route middleware
+3. **Authentication (Neon-managed)**
+    - Configure Neon authentication or external IdP (OIDC/SAML) for user identity
+    - Map Neon roles to application tiers (`free`, `paid`) and permissions
+    - Implement middleware to validate Neon-provided identity/role assertions
+    - Remove local password storage; rely on Neon/IdP for credential lifecycle
 
 4. **Testing Infrastructure**
-   - Set up pytest
-   - Create test database (Neon branch)
-   - Write basic auth tests
+    - Set up pytest
+    - Create test database (Neon branch)
+    - Write basic integration tests for Neon auth flows
 
 **Deliverables**:
-- Working FastAPI app with auth
+- Working FastAPI app with Neon-managed auth integration
 - Database connected
 - Tests passing
 
@@ -1194,10 +1189,8 @@ curl http://localhost:8000/health
 # Database (Neon PostgreSQL)
 DATABASE_URL="postgresql://user:pass@ep-xxx.us-east-2.aws.neon.tech/consilience?sslmode=require"
 
-# JWT
-JWT_SECRET_KEY="your-secret-key-here"  # Generate with: openssl rand -hex 32
-JWT_ALGORITHM="HS256"
-JWT_ACCESS_TOKEN_EXPIRE_MINUTES=43200  # 30 days
+# Neon / Identity Provider
+# Configure Neon credentials or IdP connection details via secrets/service roles
 
 # Stripe
 STRIPE_SECRET_KEY="sk_test_xxx"
@@ -1337,37 +1330,32 @@ Break-even: 14 paid users to cover fixed costs
 
 ### Critical Security Measures
 
-1. **Password Security**
-   - Use bcrypt with 12+ rounds
-   - Never store plaintext passwords
-   - Implement password strength requirements
+1. **Identity & Access Management (Neon / IdP)**
+    - Delegate authentication to Neon or an external identity provider (OIDC/SAML).
+    - Validate Neon-issued assertions or IdP tokens on every protected request.
+    - Map Neon roles to application tiers and apply least-privilege access control.
+    - Use short-lived assertions where possible and rotate provider credentials regularly.
 
-2. **JWT Security**
-   - Sign tokens with strong secret (256-bit)
-   - Set reasonable expiration (30 days max)
-   - Validate on every protected request
-   - Revoke on logout (optional: maintain blacklist)
+2. **Neon Connection & Secrets**
+    - Use Neon-managed roles/service accounts instead of embedding long-lived DB superuser credentials.
+    - Enforce TLS for DB connections and use connection pooling to prevent exhaustion.
+    - Parameterize all queries to prevent SQL injection.
 
 3. **Stripe Webhook Security**
-   - ALWAYS verify webhook signatures
-   - Never trust webhook without verification
-   - Use HTTPS only for webhook endpoint
+    - ALWAYS verify webhook signatures
+    - Never trust webhook without verification
+    - Use HTTPS only for webhook endpoint
 
-4. **Database Security**
-   - Use connection pooling (prevent exhaustion)
-   - Parameterized queries (prevent SQL injection)
-   - Principle of least privilege (DB user permissions)
+4. **API Security**
+    - Rate limiting (prevent abuse)
+    - CORS configuration (restrict origins)
+    - Input validation (Pydantic)
+    - HTTPS only in production
 
-5. **API Security**
-   - Rate limiting (prevent abuse)
-   - CORS configuration (restrict origins)
-   - Input validation (Pydantic)
-   - HTTPS only in production
-
-6. **Environment Variables**
-   - Never commit .env to git
-   - Use strong, random secrets
-   - Rotate keys periodically
+5. **Environment & Secrets Management**
+    - Never commit `.env` to git; use a secrets manager for production secrets
+    - Use service principals or short-lived tokens for backend-to-backend auth
+    - Rotate keys and secrets periodically
 
 ---
 
@@ -1466,7 +1454,7 @@ You now have a **complete, implementable architecture** for Consilience:
 
 1. **Clear technology choices**: LangGraph + Deep Agents, OpenRouter, Neon, Stripe
 2. **Database schema**: All tables defined with relationships
-3. **Authentication flow**: JWT-based with password hashing
+3. **Authentication flow**: Neon-managed authentication (Neon / external IdP)
 4. **Payment integration**: Stripe Checkout + webhook handling
 5. **Two-tier research**: Standard (free, LangGraph) + Deep (paid, Deep Agents)
 6. **Cost optimization**: OpenRouter with `:floor` routing
