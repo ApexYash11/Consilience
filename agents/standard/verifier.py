@@ -142,16 +142,22 @@ Return JSON only:
 
         data = json.loads(payload)
 
-        raw_score = data.get("score", None)
-        # Validate numeric score; fall back to heuristic if not numeric
-        if isinstance(raw_score, (int, float)):
-            score = float(raw_score)
+        # Ensure we have a dict before using .get
+        if not isinstance(data, dict):
+            score = heuristic_score(source)
         else:
-            try:
-                score = float(raw_score)
-            except Exception:
+            raw_score = data.get("score", None)
+            # Validate numeric score; fall back to heuristic if not numeric or missing
+            if raw_score is None:
                 score = heuristic_score(source)
-    except json.JSONDecodeError:
+            elif isinstance(raw_score, (int, float)):
+                score = float(raw_score)
+            else:
+                try:
+                    score = float(raw_score)
+                except Exception:
+                    score = heuristic_score(source)
+    except (json.JSONDecodeError, AttributeError, TypeError):
         score = heuristic_score(source)
 
     return max(0.0, min(score, 1.0))
