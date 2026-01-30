@@ -1,11 +1,15 @@
 import os
+import logging
 import httpx
 import jwt
+from jwt import PyJWKClient
 from datetime import datetime
 from typing import Optional, Dict
 from uuid import UUID
 from jose import JWTError
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from models.user import UserResponse
 from models.payment import SubscriptionTier
@@ -67,22 +71,34 @@ class NeonAuthService:
             raise JWTError("Token is required")
 
         try:
-            # Fetch JWKS (synchronously)
-            jwks = None
-            if JWKS_URL:
-                resp = httpx.get(JWKS_URL, timeout=5.0)
-                resp.raise_for_status()
-                jwks = resp.json()
+            # Enforce signature verification using JWKS when configured.
+            if not JWKS_URL:
+                # Fail fast: do not allow skipping verification in production
+                raise JWTError("JWKS_URL not configured; cannot verify token signature")
 
-            # Use PyJWT to decode (if jwks provided, user may need custom verification)
-            # For test and simplified flows we skip strict jwks verification and
-            # decode without key when jwks is not configured.
-            if jwks:
-                # In production you'd construct the public key from JWKS
-                # Here we attempt a decode without verification fallback for tests.
-                payload = jwt.decode(token, options={"verify_signature": False})
-            else:
-                payload = jwt.decode(token, options={"verify_signature": False})
+            try:
+                # Use PyJWKClient to fetch keys and select the correct signing key for this token
+                jwk_client = PyJWKClient(JWKS_URL)
+                signing_key = jwk_client.get_signing_key_from_jwt(token)
+                public_key = signing_key.key
+            except Exception as e:
+                # Surface JWKS/key retrieval failures
+                logger.exception("Failed to fetch or parse JWKS from %s", JWKS_URL)
+                raise JWTError(f"Failed to obtain signing key from JWKS: {e}")
+
+            # Decode and verify signature. Adjust algorithms/audience/issuer as needed.
+            try:
+                payload = jwt.decode(
+                    token,
+                    key=public_key,
+                    algorithms=["RS256"],
+                    options={"verify_aud": False},
+                )
+            except jwt.ExpiredSignatureError:
+                raise
+            except Exception as e:
+                logger.exception("JWT verification failed during jwt.decode")
+                raise JWTError(f"Invalid token signature: {e}")
 
             return payload
         except jwt.ExpiredSignatureError:
@@ -93,7 +109,16 @@ class NeonAuthService:
     def get_or_create_user(self, token_claims: Dict) -> UserResponse:
         """Get or create a `UserDB` row from token claims (synchronous)."""
         neon_sub = token_claims.get("sub")
+        email = token_claims.get("email")
         neon_role = token_claims.get("role", "user")
+
+        # Validate required claims before any DB operations
+        if not neon_sub or not email:
+            logger.error(
+                "Token claims missing required fields: sub=%s email=%s", neon_sub, email
+            )
+            raise JWTError("Missing required token claims: 'sub' and 'email'")
+
         tier = self.map_role_to_tier(neon_role)
 
         user = self.db.query(User).filter(User.neon_user_id == neon_sub).first()
@@ -118,7 +143,7 @@ class NeonAuthService:
             full_name=token_claims.get("name", ""),
             neon_user_id=neon_sub,
             subscription_tier=tier,
-            hashed_password="oauth_user",  # OAuth users don't have passwords
+            hashed_password="!oauth:neon",  # Sentinel indicating OAuth-created user (no password)
             is_active=True,
             created_at=datetime.utcnow(),
         )
