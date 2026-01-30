@@ -158,8 +158,8 @@ LLM Provider: OpenRouter
 Database: Neon Serverless PostgreSQL
 ORM: SQLAlchemy 2.0 with asyncpg
 Payment: Stripe SDK
-Authentication: JWT (PyJWT)
-Password Hashing: passlib with bcrypt
+Authentication: Neon-managed authentication (use Neon DB auth / roles)
+Password Hashing: (managed by Neon or external identity provider)
 Environment: python-dotenv
 ```
 
@@ -326,59 +326,17 @@ CREATE INDEX idx_subscriptions_user_id ON subscriptions(user_id);
 
 ---
 
-## 🔐 Authentication & Authorization Flow
+### 🔐 Authentication & Authorization Flow
 
-### User Registration & Login
+Authentication is delegated to Neon-managed authentication and role-based access control. The platform relies on Neon DB for user identity, session management, and role enforcement rather than issuing local JWTs.
 
-```
-1. User Registration
-   POST /api/auth/register
-   ├─ Validate email format (Pydantic)
-   ├─ Hash password with bcrypt (passlib)
-   ├─ Create user record in Neon DB
-   ├─ Return JWT access token (expires 30 days)
-   └─ Return refresh token (expires 90 days)
+- User accounts and credentials are stored/managed by Neon (or an external identity provider connected to Neon).
+- The backend verifies inbound requests using the Neon-provided session or role assertion mechanism (e.g., DB session tokens, signed assertions, or an identity provider token validated against Neon).
+- Protected endpoints (e.g., `/api/research/*`) check the Neon-provided identity/role for authorization and enforce tier limits from the `users`/`subscriptions` tables.
 
-2. User Login
-   POST /api/auth/login
-   ├─ Query user by email from Neon DB
-   ├─ Verify password with bcrypt
-   ├─ Check subscription tier
-   ├─ Return JWT tokens
-   └─ Return user profile + tier
-
-3. Token Refresh
-   POST /api/auth/refresh
-   ├─ Validate refresh token
-   ├─ Generate new access token
-   └─ Return new tokens
-
-4. Protected Endpoints
-   All /api/research/* endpoints
-   ├─ Extract JWT from Authorization header
-   ├─ Verify token signature
-   ├─ Extract user_id from token payload
-   ├─ Query user from DB (check tier, is_active)
-   └─ Proceed or return 401 Unauthorized
-```
-
-### JWT Structure
-
-```python
-# Access Token Payload
-{
-    "sub": "user_id",  # Subject (user UUID)
-    "email": "[email protected]",
-    "tier": "paid",  # or "free"
-    "exp": 1704067200,  # Expiration (30 days)
-    "iat": 1701475200   # Issued at
-}
-
-# Middleware checks:
-# - Token not expired
-# - User still exists and active
-# - Tier matches endpoint requirements
-```
+Notes:
+- Remove local JWT issuance and refresh endpoints; rely on Neon or an external IdP for token lifecycle.
+- Keep webhook and backend-to-backend authentication secure (use signed requests or API keys stored in environment variables).
 
 ---
 

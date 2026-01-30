@@ -1,11 +1,7 @@
-"""
-FastAPI application for Consilience research platform.
-Main entry point that includes all routers.
-"""
-
 from fastapi import FastAPI
+from database.connection import _engine
+from database.connection import init_db
 from fastapi.middleware.cors import CORSMiddleware
-from api.routes import auth, research, payments
 
 app = FastAPI(
     title="Consilience API",
@@ -21,13 +17,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Include routers
-# Note: prefixes are handled in the routers themselves for modularity
-app.include_router(auth.router)
-app.include_router(research.router)
-app.include_router(payments.router)
-
+# instantiate the database
 @app.on_event("startup")
 async def startup_event():
     """Initialize database and services on startup."""
