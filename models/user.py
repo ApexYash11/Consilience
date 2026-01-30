@@ -1,4 +1,3 @@
-"""User-related Pydantic models."""
 from datetime import datetime
 from pydantic import BaseModel, EmailStr, Field
 from uuid import UUID, uuid4
