@@ -77,6 +77,9 @@ class UserDB(Base):
     hashed_password = Column(String(255), nullable=False)
     full_name = Column(String(200))
     
+    # OAuth integration
+    neon_user_id = Column(String(255), unique=True, index=True)
+    
     # Subscription
     subscription_tier = Column(
         Enum(SubscriptionTier),
