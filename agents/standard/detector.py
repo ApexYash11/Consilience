@@ -5,6 +5,7 @@ from typing import Dict, List
 from models.research import Contradiction, ResearchState, Source
 from config.models import (
     get_model_for_phase,
+    get_model_pricing,
     ModelPhase,
     ResearchMode,
     OPENROUTER_CONFIG,
@@ -59,7 +60,16 @@ def detector_node(state: ResearchState) -> ResearchState:
         f"Detected {len(contradictions)} contradictions across {comparisons} comparisons."
     )
     state.tokens_used = (state.tokens_used or 0) + comparisons * 150
-    state.cost = (state.cost or 0.0)
+
+    # Compute cost based on model pricing (price is per million tokens)
+    try:
+        pricing = get_model_pricing(model)
+        cost_per_million = pricing.get("input", 0.0) + pricing.get("output", 0.0)
+        cost_per_token = cost_per_million / 1_000_000
+        state.cost = (state.cost or 0.0) + (comparisons * 150) * cost_per_token
+    except Exception:
+        # If pricing lookup fails, keep previous cost (safe fallback)
+        state.cost = (state.cost or 0.0)
 
     logger.info(state.contradiction_analysis)
     return state

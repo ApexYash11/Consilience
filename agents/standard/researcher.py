@@ -100,27 +100,40 @@ async def researcher_node(state: ResearchState, researcher_id: int) -> ResearchS
 
 async def search_sources(query: str, researcher_id: int) -> Tuple[List[Source], Dict]:
     """
-    Search multiple backends for sources.
+    Generate candidate sources for a query using an LLM (SIMULATED SOURCES).
 
-    **Backends**:
-        1. Web search (DuckDuckGo - free, no API key)
-        2. arXiv (Academic papers - free API)
-        3. Semantic Scholar (Papers - free API)
+    NOTE: This implementation does NOT perform real network searches against
+    DuckDuckGo, arXiv, Semantic Scholar, or other APIs. Instead it prompts an
+    LLM to synthesize a JSON array of suggested sources and then parses that
+    output into `Source` objects. The generated sources may hallucinate and
+    can contain invalid or non-existent DOIs, URLs, years, or author lists.
 
-    **Output**: List of Source objects with metadata
+    Current process:
+        1. Build an LLM prompt requesting a JSON array of 3 candidate sources.
+        2. Call the LLM and parse the JSON response (with a relaxed fallback
+             that extracts a JSON array from surrounding text if necessary).
+        3. Convert each JSON item into a `Source` Pydantic object and return
+             (sources, cost_info).
 
-    **Process**:
-        1. Search web for general sources
-        2. Search arXiv for academic papers
-        3. Evaluate credibility
-        4. Return top 3 sources per researcher
+    Limitations:
+        - No real network/API calls are made; results are synthetic examples.
+        - DOIs/URLs returned by the LLM must be verified before use.
+        - Credibility scores are LLM-estimated and should be confirmed.
+
+    Recommended next steps for production:
+        - Replace the LLM-based generator with real integrations (DuckDuckGo,
+            arXiv API, Semantic Scholar API) to retrieve authoritative metadata.
+        - Add DOI/URL verification (HTTP HEAD, DOI resolution) and publisher
+            metadata normalization.
+        - Rate-limit and cache external searches to control costs.
 
     Args:
         query: Search query string
         researcher_id: ID of this researcher (for logging)
 
     Returns:
-        List of Source objects with title, authors, URL, etc.
+        Tuple of (List[Source], cost_info dict). `cost_info` contains
+        `total_tokens` and `cost` estimated from the LLM response.
     """
     sources: List[Source] = []
 
@@ -167,7 +180,7 @@ Return a JSON array with 3 sources:
 
 CRITICAL: Return ONLY the JSON array, no other text."""
 
-        response = llm.invoke(web_search_prompt)
+        response = await llm.ainvoke(web_search_prompt)
 
         # Parse response
         payload = response.content
@@ -214,4 +227,5 @@ CRITICAL: Return ONLY the JSON array, no other text."""
 
     except Exception as e:
         logger.error(f"search_sources failed for query '{query}': {str(e)}", exc_info=True)
-        return sources, {"total_tokens": 0, "cost": 0.0}
+        # On failure, do not return partially-built sources — return empty results
+        return [], {"total_tokens": 0, "cost": 0.0}

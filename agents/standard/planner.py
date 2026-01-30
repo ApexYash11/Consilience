@@ -133,6 +133,11 @@ CRITICAL: Return ONLY valid JSON, no additional text."""
         if "queries" not in result or not isinstance(result["queries"], list):
             raise ValueError("Planner response missing 'queries' field")
 
+        # Reject empty queries list explicitly
+        if len(result["queries"]) <= 0:
+            logger.error("Planner returned an empty 'queries' list")
+            raise ValueError("Planner response contains an empty 'queries' list")
+
         if len(result["queries"]) < 5:
             logger.warning(
                 f"Planner returned {len(result['queries'])} queries, expected 5"

@@ -18,6 +18,7 @@ from config.models import (
 from typing import List
 import json
 import logging
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -108,12 +109,48 @@ Return JSON only:
 }}
 """
 
-    response = llm.invoke(prompt)
+    # Invoke the LLM with retries and backoff to handle transient errors.
+    response = None
+    attempts = 3
+    for attempt in range(1, attempts + 1):
+        try:
+            response = llm.invoke(prompt)
+            break
+        except Exception as e:
+            logger.warning(
+                f"LLM invoke attempt {attempt} failed for source '{source.title}': {str(e)}"
+            )
+            if attempt < attempts:
+                backoff = 2 ** attempt
+                time.sleep(backoff)
+            else:
+                logger.exception("LLM invoke ultimately failed; falling back to heuristic scoring")
+
+    if response is None:
+        # Fall back to heuristic scoring on repeated failure
+        return heuristic_score(source)
 
     try:
         payload = response.content if isinstance(response.content, str) else str(response.content)
+
+        # Strip surrounding triple-backtick fences (e.g., ```json ... ```) if present
+        import re
+
+        fenced = re.search(r"```(?:[\w+-]+\n)?(.*?)```", payload, re.DOTALL)
+        if fenced:
+            payload = fenced.group(1).strip()
+
         data = json.loads(payload)
-        score = data.get("score", 0.5)
+
+        raw_score = data.get("score", None)
+        # Validate numeric score; fall back to heuristic if not numeric
+        if isinstance(raw_score, (int, float)):
+            score = float(raw_score)
+        else:
+            try:
+                score = float(raw_score)
+            except Exception:
+                score = heuristic_score(source)
     except json.JSONDecodeError:
         score = heuristic_score(source)
 

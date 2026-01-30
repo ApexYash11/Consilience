@@ -5,8 +5,6 @@ from uuid import uuid4
 from datetime import datetime
 from typing import Optional
 
-router = APIRouter(prefix="/api/research", tags=["research"])
-
 
 # Placeholder models and functions
 class UserResponse(BaseModel):
@@ -21,8 +19,7 @@ class ResearchState(BaseModel):  # type: ignore
     start_time: datetime
     cost: float = 0.0
     
-    def dict(self):  # type: ignore
-        return {}
+    # Use the default BaseModel.dict() implementation so callers get real state data.
 
 class Task(BaseModel):  # type: ignore
     id: str = ""
@@ -64,8 +61,8 @@ router = APIRouter(prefix="/api/research", tags=["research"])
 @router.post("/standard")
 async def create_standard_research(
     topic: str,
+    background_tasks: BackgroundTasks,
     requirements: Optional[dict] = None,
-    background_tasks: BackgroundTasks = None,  # type: ignore
     user: UserResponse = Depends(get_current_user)  # type: ignore
 ) -> dict:
     """
@@ -145,7 +142,11 @@ async def get_research_status(
     """
     
     task = await get_research_task(task_id)  # type: ignore
-    
+
+    # Return 404 if task not found
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+
     # Verify user owns task
     if task.user_id != user.id:  # type: ignore
         raise HTTPException(status_code=403, detail="Not authorized")
@@ -183,21 +184,27 @@ async def get_research_result(
     """
     
     task = await get_research_task(task_id)  # type: ignore
-    
+
+    # Return 404 if task not found
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+
     if task.user_id != user.id:  # type: ignore
         raise HTTPException(status_code=403, detail="Not authorized")
     
     if task.status != "completed":  # type: ignore
         raise HTTPException(status_code=400, detail="Task not completed")
     
-    return {  # type: ignore
+    # Safely extract result data to avoid KeyError when keys are missing
+    result = task.result_data or {}
+    return {
         "task_id": task.id,
-        "status": task.status,  # type: ignore
-        "final_paper": task.result_data["final_paper"],  # type: ignore
-        "sources": task.result_data["sources"],  # type: ignore
-        "contradictions": task.result_data["contradictions"],  # type: ignore
-        "total_cost": task.actual_cost,  # type: ignore
-        "total_tokens": task.result_data["tokens_used"]  # type: ignore
+        "status": task.status,
+        "final_paper": result.get("final_paper", ""),
+        "sources": result.get("sources", []),
+        "contradictions": result.get("contradictions", []),
+        "total_cost": task.actual_cost,
+        "total_tokens": result.get("tokens_used", 0),
     }
 
 

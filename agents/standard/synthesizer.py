@@ -1,7 +1,7 @@
 """Synthesizer agent that builds a draft paper from verified sources."""
 
 from langchain_openai import ChatOpenAI
-from typing import List
+from typing import List, Tuple, Dict, Any
 from models.research import Contradiction, ResearchState, Source, TaskStatus
 from config.models import (
     get_model_for_phase,
@@ -9,6 +9,7 @@ from config.models import (
     ResearchMode,
     OPENROUTER_CONFIG,
 )
+from utils.cost_estimator import estimate_cost_from_response
 import logging
 
 logger = logging.getLogger(__name__)
@@ -35,27 +36,42 @@ def synthesizer_node(state: ResearchState) -> ResearchState:
             **OPENROUTER_CONFIG,
         )
 
-        outline = _create_outline(state.topic, sources, llm)
+        outline, outline_cost = _create_outline(state.topic, sources, llm, model)
         state.draft_outline = outline
 
         paper = f"# {state.topic}\n\n"
         for idx, section_title in enumerate(outline, start=1):
-            content = _write_section(
+            content, section_cost = _write_section(
                 topic=state.topic,
                 section_title=section_title,
                 section_num=idx,
                 sources=sources,
-                contradictions=state.contradictions,
+                contradictions=state.contradictions or [],
                 llm=llm,
+                model=model,
             )
             paper += f"## {idx}. {section_title}\n\n{content}\n\n"
+            # Accumulate tokens and cost for this section
+            try:
+                state.tokens_used = (state.tokens_used or 0) + int(section_cost.get("total_tokens", 0))
+                state.cost = (state.cost or 0.0) + float(section_cost.get("cost", 0.0))
+            except Exception:
+                # TODO: Improve fallback estimation for synthesizer section cost
+                state.tokens_used = (state.tokens_used or 0) + 0
+                state.cost = (state.cost or 0.0)
 
         bibliography = _generate_bibliography(sources)
         paper += f"## References\n\n{bibliography}\n"
 
         state.draft_paper = paper
-        state.tokens_used = (state.tokens_used or 0) + 6000
-        state.cost = (state.cost or 0.0)
+        # Accumulate tokens/cost from outline phase
+        try:
+            state.tokens_used = (state.tokens_used or 0) + int(outline_cost.get("total_tokens", 0))
+            state.cost = (state.cost or 0.0) + float(outline_cost.get("cost", 0.0))
+        except Exception:
+            # TODO: If cost estimation is deferred, consider a conservative token estimate here
+            state.tokens_used = (state.tokens_used or 0) + 0
+            state.cost = (state.cost or 0.0)
 
         logger.info("Draft paper synthesized from verified sources")
         return state
@@ -66,7 +82,7 @@ def synthesizer_node(state: ResearchState) -> ResearchState:
         raise ValueError(f"Synthesis failed: {str(exc)}") from exc
 
 
-def _create_outline(topic: str, sources: List[Source], llm: ChatOpenAI) -> List[str]:
+def _create_outline(topic: str, sources: List[Source], llm: ChatOpenAI, model: str) -> Tuple[List[str], Dict[str, Any]]:
     """Generate a paper outline structure."""
     prompt = f"""Create a 7-section research paper outline for: {topic}
 
@@ -76,10 +92,16 @@ Return only the section titles, one per line:"""
     
     response = llm.invoke(prompt)
     text = response.content if isinstance(response.content, str) else str(response.content)
-    sections = [line.strip() for line in text.split('\n') if line.strip() and not line[0].isdigit()]
+    sections = [stripped for line in text.split('\n') if (stripped := line.strip()) and not stripped[0].isdigit()]
     
+    # Estimate cost for outline generation
+    try:
+        cost_info = estimate_cost_from_response(response, model)
+    except Exception:
+        cost_info = {"total_tokens": 0, "cost": 0.0}
+
     if len(sections) >= 7:
-        return sections[:7]
+        return sections[:7], cost_info
     return [
         "Introduction",
         "Background & Context",
@@ -88,7 +110,7 @@ Return only the section titles, one per line:"""
         "Current Research Gaps",
         "Future Directions",
         "Conclusion",
-    ]
+    ], cost_info
 
 
 def _write_section(
@@ -98,7 +120,8 @@ def _write_section(
     sources: List[Source],
     contradictions: List[Contradiction],
     llm: ChatOpenAI,
-) -> str:
+    model: str,
+) -> Tuple[str, Dict[str, Any]]:
     """Generate content for a single section."""
     is_debate_section = "debate" in section_title.lower() or "conflict" in section_title.lower()
     
@@ -122,7 +145,12 @@ Use these sources:
 Make it 300-500 words, academic tone."""
     
     response = llm.invoke(prompt)
-    return response.content if isinstance(response.content, str) else str(response.content)
+    content = response.content if isinstance(response.content, str) else str(response.content)
+    try:
+        cost_info = estimate_cost_from_response(response, model)
+    except Exception:
+        cost_info = {"total_tokens": 0, "cost": 0.0}
+    return content, cost_info
 
 
 def _generate_bibliography(sources: List[Source]) -> str:

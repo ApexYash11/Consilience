@@ -1,5 +1,5 @@
 """Pydantic models for research tasks."""
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from pydantic import BaseModel, Field
 from uuid import UUID, uuid4
@@ -33,11 +33,11 @@ class ResearchConfig(BaseModel):
 
 class ResearchTask(BaseModel):
     id: UUID = Field(default_factory=uuid4)
-    user_id: Optional[UUID]
+    user_id: Optional[UUID] = None
     title: str
     description: str
     config: ResearchConfig = Field(default_factory=ResearchConfig)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 

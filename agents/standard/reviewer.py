@@ -10,6 +10,7 @@ from config.models import (
 )
 import json
 import logging
+from utils.cost_estimator import estimate_cost_from_response
 
 logger = logging.getLogger(__name__)
 
@@ -48,8 +49,17 @@ Paper:
 {state.draft_paper}
 """
 
-    response = llm.invoke(prompt)
-    payload = response.content if isinstance(response.content, str) else str(response.content)
+    try:
+        response = llm.invoke(prompt)
+        payload = response.content if isinstance(response.content, str) else str(response.content)
+    except Exception as e:
+        logger.exception("Reviewer LLM invoke failed")
+        # Record failure state and return safely so workflow can handle it
+        state.review_feedback = f"Review failed: {str(e)}"
+        state.issues_found = ["LLM invoke error"]
+        state.revision_needed = True
+        state.status = TaskStatus.FAILED
+        return state
 
     try:
         result = json.loads(payload)
@@ -63,7 +73,14 @@ Paper:
     state.review_feedback = result.get("feedback", "No feedback provided")
     state.issues_found = result.get("issues", [])
     state.revision_needed = result.get("revision_needed", False)
-    state.tokens_used = (state.tokens_used or 0) + 3500
-    state.cost = (state.cost or 0.0)
+    # Extract token usage and cost from the LLM response when available
+    try:
+        cost_info = estimate_cost_from_response(response, model)
+        state.tokens_used = (state.tokens_used or 0) + int(cost_info.get("total_tokens", 0))
+        state.cost = (state.cost or 0.0) + float(cost_info.get("cost", 0.0))
+    except Exception:
+        # Fallback to the previous rough values if cost estimation fails
+        state.tokens_used = (state.tokens_used or 0) + 3500
+        state.cost = (state.cost or 0.0)
 
     return state

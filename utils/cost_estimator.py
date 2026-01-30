@@ -43,12 +43,13 @@ def estimate_cost_from_response(
 
             try:
                 encoding = tiktoken.get_encoding("cl100k_base")
-                input_tokens = len(encoding.encode(str(getattr(response, "content", ""))))
-                output_tokens = 0
+                # Response.content is the model output; treat it as completion/output tokens
+                output_tokens = len(encoding.encode(str(getattr(response, "content", ""))))
+                input_tokens = 0
             except Exception:
-                # Rough estimate: ~4 chars per token
-                input_tokens = len(str(getattr(response, "content", ""))) // 4
-                output_tokens = 0
+                # Rough estimate: ~4 chars per token for output
+                output_tokens = len(str(getattr(response, "content", ""))) // 4
+                input_tokens = 0
 
             usage = {
                 "prompt_tokens": input_tokens,
@@ -83,6 +84,8 @@ def estimate_cost_from_response(
             "input_tokens": 0,
             "output_tokens": 0,
             "total_tokens": 0,
+            "input_cost": 0.0,
+            "output_cost": 0.0,
             "cost": 0.0,
             "model": model,
         }
@@ -144,7 +147,6 @@ def estimate_research_cost(
 
         for phase, tokens in phases.items():
             cost_breakdown[phase] = 0.0  # All free models
-            total_cost = 0.0
 
     else:  # deep research with Kimi K2.5
         from config.models import DEEP_MODELS
