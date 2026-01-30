@@ -1,16 +1,14 @@
-"""Database connection utilities (Neon/Postgres-ready).
-Provides `get_session()` and `init_db()` helpers.
-"""
 import os
+from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-# Neon/Postgres connection string
-# Format: postgresql://user:password@host/dbname?sslmode=require
+load_dotenv()
+
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 if not DATABASE_URL:
-    # Fallback for local development if needed, but we target Neon
+    # Fallback for local development if needed
     DATABASE_URL = "sqlite:///./consilience.db"
 
 _engine = create_engine(DATABASE_URL, future=True, pool_pre_ping=True)

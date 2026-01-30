@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from database.connection import _engine
 from database.connection import init_db
 from fastapi.middleware.cors import CORSMiddleware
+import asyncio
 
 app = FastAPI(
     title="Consilience API",
@@ -21,8 +22,9 @@ app.add_middleware(
 @app.on_event("startup")
 async def startup_event():
     """Initialize database and services on startup."""
-    print(" Consilience API initializing...")
-    # Registration of database session listeners or storage connections can go here
+    print("Consilience API initializing...")
+    await asyncio.to_thread(init_db)
+    print("Database initialized and connected.")
 
 @app.get("/")
 async def root():
@@ -31,6 +33,11 @@ async def root():
         "service": "Consilience API",
         "documentation": "/docs"
     }
+
+@app.get("/startup")
+def startup():
+    init_db()
+    return {"status": "database initialized"}
 
 if __name__ == "__main__":
     import uvicorn
