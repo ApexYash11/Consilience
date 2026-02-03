@@ -45,14 +45,37 @@ def upgrade() -> None:
         END$$;
         """)
         
-        subscription_status_enum = sa.Enum('ACTIVE', 'PAST_DUE', 'CANCELED', 'TRIALING', 'INCOMPLETE', name='subscriptionstatus')
-        subscription_status_enum.create(conn, checkfirst=True)
+        op.execute("""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'subscriptionstatus') THEN
+                CREATE TYPE subscriptionstatus AS ENUM ('ACTIVE', 'PAST_DUE', 'CANCELED', 'TRIALING', 'INCOMPLETE');
+            END IF;
+        END$$;
+        """)
         
-        research_depth_enum = sa.Enum('STANDARD', 'DEEP', name='researchdepth')
-        research_depth_enum.create(conn, checkfirst=True)
+        op.execute("""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'researchdepth') THEN
+                CREATE TYPE researchdepth AS ENUM ('STANDARD', 'DEEP');
+            END IF;
+        END$$;
+        """)
         
-        task_status_enum = sa.Enum('PENDING', 'RUNNING', 'PAUSED', 'COMPLETED', 'FAILED', 'CANCELLED', name='taskstatus')
-        task_status_enum.create(conn, checkfirst=True)
+        op.execute("""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'taskstatus') THEN
+                CREATE TYPE taskstatus AS ENUM ('PENDING', 'RUNNING', 'PAUSED', 'COMPLETED', 'FAILED', 'CANCELLED');
+            END IF;
+        END$$;
+        """)
+        
+        # Create enum objects for use in column definitions
+        subscription_status_enum = sa.Enum('ACTIVE', 'PAST_DUE', 'CANCELED', 'TRIALING', 'INCOMPLETE', name='subscriptionstatus', create_type=False)
+        research_depth_enum = sa.Enum('STANDARD', 'DEEP', name='researchdepth', create_type=False)
+        task_status_enum = sa.Enum('PENDING', 'RUNNING', 'PAUSED', 'COMPLETED', 'FAILED', 'CANCELLED', name='taskstatus', create_type=False)
 
         # Baseline creation for fresh DB
         op.create_table('users',
@@ -289,9 +312,16 @@ def upgrade() -> None:
         op.add_column('users', sa.Column('full_name', sa.String(length=200), nullable=True))
         op.add_column('users', sa.Column('neon_user_id', sa.String(length=255), nullable=True))
         
-        # Subscription Status Backfill
-        sub_status_enum = sa.Enum('ACTIVE', 'PAST_DUE', 'CANCELED', 'TRIALING', 'INCOMPLETE', name='subscriptionstatus')
-        sub_status_enum.create(op.get_bind(), checkfirst=True)
+        # Subscription Status Backfill - use DO block to ensure idempotency
+        op.execute("""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'subscriptionstatus') THEN
+                CREATE TYPE subscriptionstatus AS ENUM ('ACTIVE', 'PAST_DUE', 'CANCELED', 'TRIALING', 'INCOMPLETE');
+            END IF;
+        END$$;
+        """)
+        sub_status_enum = sa.Enum('ACTIVE', 'PAST_DUE', 'CANCELED', 'TRIALING', 'INCOMPLETE', name='subscriptionstatus', create_type=False)
         op.add_column('users', sa.Column('subscription_status', sub_status_enum, nullable=True))
         op.execute("UPDATE users SET subscription_status = 'ACTIVE'::subscriptionstatus WHERE subscription_status IS NULL")
         op.alter_column('users', 'subscription_status', nullable=False)
