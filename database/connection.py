@@ -1,6 +1,6 @@
 """
 Database connection and session management for Consilience API.
-Supports both sync (for Alembic) and async (for FastAPI) operations.
+Async connections for FastAPI.
 """
 
 import os
@@ -20,9 +20,9 @@ if not DATABASE_URL:
     # Fallback for local development
     DATABASE_URL = "sqlite:///./consilience.db"
 
-# Create sync engine for Alembic migrations
+# Create sync engine (kept for backward compatibility if needed)
 if "postgresql" in DATABASE_URL:
-    # For Alembic, use standard PostgreSQL connection
+    # Use standard PostgreSQL connection
     SYNC_DATABASE_URL = DATABASE_URL.replace("postgresql+asyncpg", "postgresql")
     
     # Parse and remove query parameters that psycopg2 doesn't support
@@ -96,7 +96,7 @@ AsyncSessionLocal = async_sessionmaker(
 
 
 def get_session():
-    """Synchronous session generator for Alembic."""
+    """Synchronous session generator (deprecated, kept for backward compatibility)."""
     db = SessionLocal()
     try:
         yield db
@@ -149,7 +149,7 @@ async def init_async_db():
 
 
 def init_db():
-    """Initialize sync database (used by Alembic)."""
+    """Initialize sync database (legacy, use async version instead)."""
     from database.schema import Base
     
     Base.metadata.create_all(bind=_engine)
