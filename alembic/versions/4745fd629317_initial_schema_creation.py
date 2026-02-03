@@ -25,7 +25,12 @@ def upgrade() -> None:
     tables = inspector.get_table_names()
 
     # --- Fresh DB Check ---
-    if 'users' not in tables and 'research_tasks' not in tables:
+    # Explicitly handle partial schema states. If both tables are missing,
+    # treat as a fresh DB. If exactly one exists, abort to avoid mixed state.
+    users_exists = 'users' in tables
+    research_tasks_exists = 'research_tasks' in tables
+
+    if not users_exists and not research_tasks_exists:
         # Create Types first
         subscription_tier_enum = sa.Enum('FREE', 'PRO', 'ENTERPRISE', name='subscriptiontier')
         subscription_tier_enum.create(conn, checkfirst=True)
@@ -112,6 +117,11 @@ def upgrade() -> None:
         # We need to make sure we don't duplicate logic.
         # The logic below iterates and creates them if they don't exist.
         pass
+    elif users_exists != research_tasks_exists:
+        raise RuntimeError(
+            "Partial schema detected: expected both 'users' and 'research_tasks' to exist, "
+            "but only one was found. Aborting migration to avoid inconsistent state."
+        )
     else:
         # --- Existing DB Logic ---
         # 1. Drop old tables safely (with backup)
@@ -151,10 +161,17 @@ def upgrade() -> None:
                    existing_nullable=False)
 
         # Task ID: Fix NOT NULL
+        # Backup orphaned rows before deletion so data can be recovered if needed.
+        # Create a durable backup table if it doesn't exist, copy rows there, then delete.
+        op.execute("CREATE TABLE IF NOT EXISTS agent_actions_backup (LIKE agent_actions INCLUDING ALL)")
+        op.execute("ALTER TABLE agent_actions_backup ADD COLUMN IF NOT EXISTS backed_up_at TIMESTAMP DEFAULT now()")
+        op.execute("ALTER TABLE agent_actions_backup ADD COLUMN IF NOT EXISTS backup_run_id UUID DEFAULT gen_random_uuid()")
+        op.execute("INSERT INTO agent_actions_backup SELECT *, now() as backed_up_at, gen_random_uuid() as backup_run_id FROM agent_actions WHERE task_id IS NULL")
+        # Now safely delete orphaned rows
         op.execute("DELETE FROM agent_actions WHERE task_id IS NULL")
         op.alter_column('agent_actions', 'task_id',
-                   existing_type=sa.UUID(),
-                   nullable=False)
+               existing_type=sa.UUID(),
+               nullable=False)
 
         op.alter_column('agent_actions', 'agent_id',
                    existing_type=sa.VARCHAR(length=100),
@@ -164,7 +181,15 @@ def upgrade() -> None:
         op.execute("DROP INDEX IF EXISTS idx_actions_task_id")
         op.create_index(op.f('ix_agent_actions_task_id'), 'agent_actions', ['task_id'], unique=False)
         
-        op.drop_constraint('agent_actions_task_id_fkey', 'agent_actions', type_='foreignkey')
+        # Drop existing FK constraint if present (names can vary across DBs)
+        agent_actions_fks = inspector.get_foreign_keys('agent_actions')
+        agent_actions_task_fk = next(
+            (fk for fk in agent_actions_fks if fk.get('constrained_columns') == ['task_id']),
+            None
+        )
+        agent_actions_task_fk_name = agent_actions_task_fk.get('name') if agent_actions_task_fk else None
+        if isinstance(agent_actions_task_fk_name, str) and agent_actions_task_fk_name:
+            op.drop_constraint(agent_actions_task_fk_name, 'agent_actions', type_='foreignkey')
         op.create_foreign_key('fk_agent_actions_task_id', 'agent_actions', 'research_tasks', ['task_id'], ['id'], ondelete='CASCADE')
         
         op.drop_column('agent_actions', 'intent')
@@ -227,7 +252,15 @@ def upgrade() -> None:
         op.execute("DROP INDEX IF EXISTS idx_tasks_user_id")
         op.create_index(op.f('ix_research_tasks_user_id'), 'research_tasks', ['user_id'], unique=False)
         
-        op.drop_constraint('research_tasks_user_id_fkey', 'research_tasks', type_='foreignkey')
+        # Drop existing FK constraint on research_tasks.user_id if present (name may differ)
+        research_tasks_fks = inspector.get_foreign_keys('research_tasks')
+        research_tasks_user_fk = next(
+            (fk for fk in research_tasks_fks if fk.get('constrained_columns') == ['user_id']),
+            None
+        )
+        research_tasks_user_fk_name = research_tasks_user_fk.get('name') if research_tasks_user_fk else None
+        if isinstance(research_tasks_user_fk_name, str) and research_tasks_user_fk_name:
+            op.drop_constraint(research_tasks_user_fk_name, 'research_tasks', type_='foreignkey')
         op.create_foreign_key('fk_research_tasks_user_id', 'research_tasks', 'users', ['user_id'], ['id'], ondelete='CASCADE')
 
         op.drop_column('research_tasks', 'duration_seconds')
@@ -293,7 +326,15 @@ def upgrade() -> None:
                    existing_type=postgresql.TIMESTAMP(),
                    existing_nullable=True)
                    
-        op.drop_constraint('users_email_key', 'users', type_='unique')
+        # Remove any pre-existing unique constraint on users.email if present
+        users_uniques = inspector.get_unique_constraints('users')
+        users_email_unique = next(
+            (uc for uc in users_uniques if uc.get('column_names') == ['email']),
+            None
+        )
+        users_email_unique_name = users_email_unique.get('name') if users_email_unique else None
+        if isinstance(users_email_unique_name, str) and users_email_unique_name:
+            op.drop_constraint(users_email_unique_name, 'users', type_='unique')
         op.create_index(op.f('ix_users_email'), 'users', ['email'], unique=True)
         op.create_index(op.f('ix_users_neon_user_id'), 'users', ['neon_user_id'], unique=True)
         op.create_index(op.f('ix_users_stripe_customer_id'), 'users', ['stripe_customer_id'], unique=True)

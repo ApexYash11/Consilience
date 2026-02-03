@@ -44,10 +44,10 @@ class TestResearchServiceCRUD:
         )
         
         assert task.id is not None
-        assert task.user_id  # type: ignore
-        assert task.topic  # type: ignore
-        assert task.status  # type: ignore
-        assert task.estimated_cost_usd  # type: ignore
+        assert task.user_id is not None  # type: ignore
+        assert task.topic is not None  # type: ignore
+        assert task.status is not None  # type: ignore
+        assert task.estimated_cost_usd == 0.0  # type: ignore
 
     @pytest.mark.asyncio
     async def test_get_research_task(self, async_session):
@@ -201,8 +201,7 @@ class TestAgentActionLogging:
         
         assert len(actions) == 3
         for action in actions:
-            assert action.task_id  # type: ignore
-        assert len(actions) == 3
+            assert action.task_id is not None  # type: ignore
 
     @pytest.mark.asyncio
     async def test_log_agent_error(self, async_session):

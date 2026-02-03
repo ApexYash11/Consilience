@@ -121,16 +121,29 @@ class ResearchService:
         elif status in (TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED):
             task.completed_at = datetime.utcnow()  # type: ignore
 
-        # Store final state as metadata
+        # Store final state and additional metadata.
+        # Preserve existing metadata_json and nest final_state under 'final_state' key
         if final_state:
-            task.metadata_json = final_state.dict()  # type: ignore
+            final_state_dict = final_state.dict()
+            if metadata_json:
+                merged = dict(metadata_json)
+                merged.setdefault('final_state', final_state_dict)
+                task.metadata_json = merged  # type: ignore
+            else:
+                # If task already has metadata_json, attach final_state into it
+                existing = task.metadata_json or {}
+                if isinstance(existing, dict):
+                    existing['final_state'] = final_state_dict
+                    task.metadata_json = existing  # type: ignore
+                else:
+                    task.metadata_json = {'final_state': final_state_dict}  # type: ignore
 
         # Store error
         if error_message:
             task.error_message = error_message  # type: ignore
 
-        # Store additional metadata
-        if metadata_json:
+        # If metadata_json provided (and final_state wasn't used to merge above), ensure it's set
+        if metadata_json and not final_state:
             task.metadata_json = metadata_json  # type: ignore
 
         await session.commit()

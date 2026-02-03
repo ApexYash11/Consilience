@@ -38,16 +38,25 @@ SessionLocal = sessionmaker(bind=_engine, autoflush=False, autocommit=False)
 
 
 # Create async engine for FastAPI
+from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+
+async_connect_args = {}
 if "postgresql" in DATABASE_URL:
+    # Ensure asyncpg scheme
     ASYNC_DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
-    if "postgresql+asyncpg" not in ASYNC_DATABASE_URL:
-        ASYNC_DATABASE_URL = DATABASE_URL  # Already has asyncpg
-    
-    # Remove sslmode from URL and add to connect_args
-    # asyncpg doesn't support sslmode as query parameter
-    if "sslmode=" in ASYNC_DATABASE_URL:
-        ASYNC_DATABASE_URL = ASYNC_DATABASE_URL.split("?")[0]  # Remove query params
-    
+
+    # Parse URL and remove only the sslmode query parameter (case-insensitive), preserving other params
+    parsed = urlparse(ASYNC_DATABASE_URL)
+    query_params = parse_qs(parsed.query, keep_blank_values=True)
+    query_params = {
+        k: v
+        for k, v in query_params.items()
+        if k.lower() not in ('sslmode', 'channel_binding')
+    }
+    new_query = urlencode(query_params, doseq=True)
+    ASYNC_DATABASE_URL = urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, new_query, parsed.fragment))
+
+    # Provide ssl handling via asyncpg connect args if needed
     async_connect_args = {"ssl": "prefer"}
 elif "sqlite" in DATABASE_URL and "aiosqlite" not in DATABASE_URL:
     ASYNC_DATABASE_URL = DATABASE_URL.replace("sqlite://", "sqlite+aiosqlite://")
@@ -64,7 +73,7 @@ async_engine = create_async_engine(
     pool_size=20,
     max_overflow=0,
     pool_recycle=3600,
-    connect_args=async_connect_args if async_connect_args else None,
+    connect_args=async_connect_args,
 )
 
 AsyncSessionLocal = async_sessionmaker(

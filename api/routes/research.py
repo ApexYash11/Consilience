@@ -236,7 +236,13 @@ async def get_research_status(
     }
     """
     try:
-        task = await ResearchService.get_research_task(db, UUID(task_id))
+        # Validate UUID format
+        try:
+            task_uuid = UUID(task_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid task_id format")
+
+        task = await ResearchService.get_research_task(db, task_uuid)
         
         if not task:
             raise HTTPException(status_code=404, detail="Task not found")
@@ -292,7 +298,13 @@ async def get_research_result(
     }
     """
     try:
-        task = await ResearchService.get_research_task(db, UUID(task_id))
+        # Validate UUID format
+        try:
+            task_uuid = UUID(task_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Malformed UUID")
+
+        task = await ResearchService.get_research_task(db, task_uuid)
         
         if not task:
             raise HTTPException(status_code=404, detail="Task not found")
