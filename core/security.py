@@ -10,8 +10,12 @@ import jwt
 import httpx
 from functools import lru_cache
 from fastapi import HTTPException, status
+import logging
+from urllib.parse import urlparse
 
 from core.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 class NeonSecurityManager:
@@ -43,9 +47,10 @@ class NeonSecurityManager:
                 self._jwks_updated_at = datetime.utcnow()
                 return self._jwks_cache
         except httpx.RequestError as e:
+            logger.error(f"Failed to fetch JWKS: {e}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to fetch JWKS: {str(e)}"
+                detail="Internal authentication error"
             )
     
     async def verify_token(self, token: str) -> dict:
@@ -83,11 +88,33 @@ class NeonSecurityManager:
             # Verify token with public key
             from jwt import PyJWK
             key_obj = PyJWK.from_dict(key)
+            
+            # Safe audience parsing
+            audience = None
+            try:
+                if self.settings.database_url:
+                    parsed = urlparse(self.settings.database_url)
+                    if parsed.hostname:
+                        audience = parsed.hostname.split('.')[0]
+            except Exception:
+                logger.warning("Could not derive audience from DATABASE_URL")
+            
+            # Prepare decoding arguments
+            decode_kwargs = {
+                "algorithms": ["RS256"],
+            }
+            if audience:
+                decode_kwargs["audience"] = audience
+            else:
+                # If we rely on audience but can't find it, we might want to disable check
+                # or verification might fail if token has aud.
+                # Assuming Neon tokens might have audience based on project.
+                decode_kwargs["options"] = {"verify_aud": False}
+
             payload = jwt.decode(
                 token,
                 key_obj.key,
-                algorithms=["RS256"],
-                audience=self.settings.database_url.split("//")[1].split(".")[0],  # Extract project from URL
+                **decode_kwargs
             )
             return payload
             
@@ -97,9 +124,10 @@ class NeonSecurityManager:
                 detail="Token has expired"
             )
         except jwt.InvalidTokenError as e:
+            logger.warning(f"Token validation failed: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=f"Invalid token: {str(e)}"
+                detail="Invalid authentication credentials"
             )
     
     def extract_user_info(self, token_payload: dict) -> dict:

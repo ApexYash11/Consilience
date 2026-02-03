@@ -6,6 +6,7 @@ Multi-agent research orchestration platform
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
 import asyncio
 import logging
 
@@ -73,11 +74,18 @@ async def health_check(
     Health check endpoint.
     Verifies API and database connectivity.
     """
+    db_status = "unreachable"
+    try:
+        await db.execute(text("SELECT 1"))
+        db_status = "connected"
+    except Exception as e:
+        logger.error(f"Health check failed to connect to DB: {str(e)}")
+
     return {
-        "status": "healthy",
+        "status": "healthy" if db_status == "connected" else "degraded",
         "service": settings.app_name,
         "version": settings.app_version,
-        "database": "connected",
+        "database": db_status,
         "authenticated": current_user is not None
     }
 

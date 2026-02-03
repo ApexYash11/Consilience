@@ -29,11 +29,11 @@ class UserCreate(UserBase):
 
 class UserResponse(BaseModel):
     """User response model."""
-    id: UUID = Field(default_factory=uuid4)
+    id: UUID
     email: EmailStr
     full_name: Optional[str]
     subscription_tier: str = "free"
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime
     class Config:
         from_attributes = True
 

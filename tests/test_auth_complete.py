@@ -109,7 +109,7 @@ def test_auth_missing_header(mock_db, mock_verify):
 @patch("core.security.NeonSecurityManager.verify_token")
 @patch("core.security.NeonSecurityManager.get_jwks")
 @patch("api.dependencies.get_async_session")
-async def test_auth_valid_token(mock_db, mock_jwks, mock_verify, valid_jwt_token):
+def test_auth_valid_token(mock_db, mock_jwks, mock_verify, valid_jwt_token):
     """Test request with valid JWT token is accepted."""
     token, payload = valid_jwt_token
     
@@ -357,7 +357,7 @@ def test_optional_auth_with_valid_token(mock_extract):
     
     # This is a placeholder test as full async testing requires pytest-asyncio
     # Real implementation would use async fixtures
-    pass
+    pytest.skip("Async test required")
 
 
 def test_optional_auth_without_token():
@@ -366,27 +366,28 @@ def test_optional_auth_without_token():
     
     # This is a placeholder test for async
     # Real implementation would use pytest.mark.asyncio
-    pass
+    pytest.skip("Async test required")
 
 
 # ============================================================================
 # Error Handling Tests
 # ============================================================================
 
-@patch("core.security.NeonSecurityManager.get_jwks")
-def test_jwks_fetch_failure(mock_jwks):
+@patch("httpx.AsyncClient.get")
+@pytest.mark.asyncio
+async def test_jwks_fetch_failure(mock_get):
     """Test handling of JWKS fetch failures."""
     import httpx
     from core.security import NeonSecurityManager
     from fastapi import HTTPException
     
     manager = NeonSecurityManager()
-    mock_jwks.side_effect = httpx.RequestError("Connection failed")
     
-    # Would raise HTTPException in real scenario
-    with pytest.raises(Exception):
-        # In real async context
-        pass
+    # Mock behavior to raise exception
+    mock_get.side_effect = httpx.RequestError("Connection failed")
+
+    with pytest.raises(HTTPException):
+        await manager.get_jwks()
 
 
 if __name__ == "__main__":

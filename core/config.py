@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     
     # Environment
     environment: str = "development"  # development, staging, production
-    debug: bool = True
+    debug: bool = False
     
     class Config:
         env_file = ".env"

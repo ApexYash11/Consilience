@@ -40,21 +40,30 @@ def formatter_node(state: ResearchState) -> ResearchState:
     if state.revision_needed and state.issues_found:
         try:
             revised_result = _revise_paper(llm, paper_text, state.issues_found)
-            # _revise_paper now returns (revised_text, revision_tokens)
-            if isinstance(revised_result, tuple) and len(revised_result) == 2:
-                paper_text, revision_tokens = revised_result
+            # _revise_paper now returns (revised_text, prompt_tokens, completion_tokens)
+            if isinstance(revised_result, tuple) and len(revised_result) == 3:
+                paper_text, rev_prompt_tokens, rev_completion_tokens = revised_result
             else:
-                paper_text = revised_result
-                revision_tokens = 0
+                # Fallback
+                paper_text = revised_result[0] if isinstance(revised_result, tuple) else revised_result
+                rev_prompt_tokens = 0
+                rev_completion_tokens = 0
+
+            # Calculate revision cost
+            try:
+                price_map = get_model_pricing(model)
+                rev_input_cost = (rev_prompt_tokens or 0) * price_map["input"]
+                rev_output_cost = (rev_completion_tokens or 0) * price_map["output"]
+                state.cost = (state.cost or 0.0) + rev_input_cost + rev_output_cost
+            except Exception:
+                logger.warning("Failed to calculate revision cost")
 
             # Safely coerce and add revision tokens
             try:
-                state.tokens_used = (state.tokens_used or 0) + int(revision_tokens or 0)
+                state.tokens_used = (state.tokens_used or 0) + int(rev_prompt_tokens or 0) + int(rev_completion_tokens or 0)
             except Exception:
-                try:
-                    state.tokens_used = (state.tokens_used or 0) + int(float(revision_tokens or 0))
-                except Exception:
-                    pass
+                pass
+
         except Exception as e:
             logger.exception("Revision step failed")
             try:
@@ -166,8 +175,8 @@ Return only the formatted paper."""
     return state
 
 
-def _revise_paper(llm: ChatOpenAI, paper: str, issues: List[str]) -> Tuple[str, int]:
-    """Revise paper to address identified issues and return (revised_text, revision_tokens)."""
+def _revise_paper(llm: ChatOpenAI, paper: str, issues: List[str]) -> Tuple[str, int, int]:
+    """Revise paper to address identified issues and return (revised_text, prompt_tokens, completion_tokens)."""
     prompt = f"""You are a revision assistant.
 
 Address the following issues when revising the paper:
@@ -181,31 +190,19 @@ Return a revised version of the paper."""
     revised = response.content if isinstance(response.content, str) else str(response.content)
 
     # attempt to extract token usage for the revision call
-    revision_tokens = None
+    prompt_tokens = 0
+    completion_tokens = 0
+    
     try:
-        usage = getattr(response, "usage", None)
-        if usage is not None:
+        usage = getattr(response, "usage_metadata", None) or getattr(response, "usage", None) 
+        if usage:
             if isinstance(usage, dict):
-                revision_tokens = usage.get("total_tokens") or (usage.get("prompt_tokens") or 0) + (usage.get("completion_tokens") or 0)
+                prompt_tokens = usage.get("input_tokens", 0) or usage.get("prompt_tokens", 0)
+                completion_tokens = usage.get("output_tokens", 0) or usage.get("completion_tokens", 0)
             else:
-                revision_tokens = getattr(usage, "total_tokens", None) or (getattr(usage, "prompt_tokens", 0) + getattr(usage, "completion_tokens", 0))
-        if revision_tokens is None and hasattr(response, "meta"):
-            meta = getattr(response, "meta")
-            if isinstance(meta, dict):
-                revision_tokens = meta.get("tokens")
+                prompt_tokens = getattr(usage, "prompt_tokens", 0)
+                completion_tokens = getattr(usage, "completion_tokens", 0)
     except Exception:
-        revision_tokens = None
+        pass
 
-    if revision_tokens is None:
-        # conservative fallback estimate for revision
-        revision_tokens = 1500
-
-    try:
-        revision_tokens = int(revision_tokens)
-    except Exception:
-        try:
-            revision_tokens = int(float(revision_tokens))
-        except Exception:
-            revision_tokens = 1500
-
-    return revised, revision_tokens
+    return revised, int(prompt_tokens or 0), int(completion_tokens or 0)

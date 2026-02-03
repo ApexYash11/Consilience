@@ -75,8 +75,10 @@ async def get_optional_user(
             tier=user_info["tier"],
             roles=user_info["roles"]
         )
-    except HTTPException:
-        return None
+    except HTTPException as exc:
+        if exc.status_code == status.HTTP_401_UNAUTHORIZED:
+            return None
+        raise exc
 
 
 async def require_paid_tier(

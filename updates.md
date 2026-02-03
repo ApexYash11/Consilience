@@ -4,6 +4,11 @@ Phase 1 — Foundation
 
 Done: FastAPI scaffold and routes present (main.py, research.py, dependencies.py); DB layer and migrations exist (connection.py, models.py, migrations/); config and security stubs (config.py, security.py); basic tests present (tests).
 Remaining: Run/configure Neon DB (connection strings, migrate), finalize Neon-managed auth middleware (validate assertions/session tokens), end-to-end auth tests, CI for migrations and basic health checks.
+
+Phase 2 — Payment Integration 
+
+*   Note: Phase 2 was intentionally skipped/deferred to focus on Core Logic. Some payment logic merged into Phase 5.
+
 Phase 3 — Standard Research (LangGraph)
 
 Done: Agent modules and tools scaffolding present (standard: planner.py, researcher.py, verifier.py, detector.py, synthesizer.py, reviewer.py, formatter.py); orchestrator file exists (standard_orchestrator.py); tools implemented (web_search.py, academic_search.py, source_verification.py, pdf_extraction.py); OpenRouter wrapper in openrouter_client.py.

@@ -51,6 +51,7 @@ jobs:
         run: |
           # Check all migration files have correct Python syntax
           python -m py_compile alembic/env.py
+          shopt -s nullglob
           for file in alembic/versions/*.py; do
             echo "Checking $file..."
             python -m py_compile "$file"
@@ -60,11 +61,13 @@ jobs:
         run: |
           # Ensure all migration files follow naming convention
           echo "Checking migration file naming..."
+          shopt -s nullglob
           for file in alembic/versions/*.py; do
             if [[ ! $file =~ ^.*[0-9a-f]{12}_[a-z0-9_]+\.py$ ]]; then
               # Check if it's a valid migration
               if grep -q "def upgrade" "$file" 2>/dev/null; then
-                echo "Valid migration: $file"
+                echo "Invalid migration naming: $file"
+                exit 1
               fi
             fi
           done
@@ -97,10 +100,13 @@ jobs:
           DATABASE_URL: postgresql://test_user:test_password@localhost:5432/test_consilience
         run: |
           # Check for orphaned migrations
-          ORPHANED=$(alembic check)
-          if [ $? -eq 1 ]; then
+          alembic check > check_output.txt 2>&1
+          check_exit_code=$?
+          cat check_output.txt
+          
+          if [ $check_exit_code -ne 0 ]; then
             echo "⚠ Potential migration issues detected"
-            echo "$ORPHANED"
+            exit $check_exit_code
           else
             echo "✓ Migration tree is clean"
           fi
@@ -110,7 +116,6 @@ jobs:
           DATABASE_URL: postgresql://test_user:test_password@localhost:5432/test_consilience
         run: |
           pytest tests/ -v --cov=database --cov=api -x
-        continue-on-error: true
       
       - name: Generate migration summary
         if: always()

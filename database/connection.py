@@ -5,10 +5,9 @@ Supports both sync (for Alembic) and async (for FastAPI) operations.
 
 import os
 from typing import AsyncGenerator
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import NullPool
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -40,6 +39,8 @@ SessionLocal = sessionmaker(bind=_engine, autoflush=False, autocommit=False)
 # Create async engine for FastAPI
 if "postgresql" in DATABASE_URL:
     ASYNC_DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
+elif "sqlite" in DATABASE_URL and "aiosqlite" not in DATABASE_URL:
+    ASYNC_DATABASE_URL = DATABASE_URL.replace("sqlite://", "sqlite+aiosqlite://")
 else:
     ASYNC_DATABASE_URL = DATABASE_URL
 
