@@ -8,7 +8,7 @@ from typing import AsyncGenerator
 from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.engine import URL
+from sqlalchemy.engine import make_url
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -38,23 +38,21 @@ SessionLocal = sessionmaker(bind=_engine, autoflush=False, autocommit=False)
 
 
 # Create async engine for FastAPI
-from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
-
 async_connect_args = {}
 if "postgresql" in DATABASE_URL:
     # Ensure asyncpg scheme
     ASYNC_DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
 
-    # Parse URL and remove only the sslmode query parameter (case-insensitive), preserving other params
-    parsed = urlparse(ASYNC_DATABASE_URL)
-    query_params = parse_qs(parsed.query, keep_blank_values=True)
-    query_params = {
-        k: v
-        for k, v in query_params.items()
-        if k.lower() not in ('sslmode', 'channel_binding')
+    # Parse URL and remove only the sslmode (and channel_binding) query parameters, preserving others
+    url_obj = make_url(ASYNC_DATABASE_URL)
+    query_params = dict(url_obj.query)
+    cleaned_query = {
+        key: value
+        for key, value in query_params.items()
+        if key.lower() not in ("sslmode", "channel_binding")
     }
-    new_query = urlencode(query_params, doseq=True)
-    ASYNC_DATABASE_URL = urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, new_query, parsed.fragment))
+    url_obj = url_obj.set(query=cleaned_query)
+    ASYNC_DATABASE_URL = str(url_obj)
 
     # Provide ssl handling via asyncpg connect args if needed
     async_connect_args = {"ssl": "prefer"}

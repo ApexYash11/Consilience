@@ -320,8 +320,8 @@ async def get_research_result(
                 detail=f"Task not completed. Current status: {task.status.value}"  # type: ignore
             )
         
-        # Extract result data from metadata
-        result_data = task.metadata_json or {}  # type: ignore
+        # Extract result data from final_state_json if available, fallback to metadata_json
+        result_data = task.final_state_json or task.metadata_json or {}  # type: ignore
         
         return ResearchResultResponse(
             task_id=str(task.id),

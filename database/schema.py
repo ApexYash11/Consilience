@@ -181,6 +181,7 @@ class ResearchTaskDB(Base):
     output_path = Column(String(1000))
     error_message = Column(Text)
     metadata_json = Column(JSON)
+    final_state_json = Column(JSON)
     
     # Relationships
     user = relationship("UserDB", back_populates="tasks")

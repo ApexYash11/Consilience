@@ -168,10 +168,7 @@ async def run_research(state: ResearchState) -> ResearchState:
             final_state = ResearchState(**final_state)
 
         # Preserve the original start time we recorded before invocation
-        try:
-            final_state.start_time = final_state.start_time or execution_start
-        except Exception:
-            final_state.start_time = execution_start
+        final_state.start_time = execution_start
 
         # Update execution metadata
         final_state.end_time = datetime.utcnow()
