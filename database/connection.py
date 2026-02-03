@@ -116,22 +116,25 @@ async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
 async def init_async_db():
     """Initialize async database and verify connection.
     
-    Note: Skips create_all() since migrations are run via Alembic.
-    Only verifies async connection works using raw asyncpg pool.
+    No Alembic - just test the connection.
+    Tables are already created in Neon. For new databases, run:
+      from database.schema import Base
+      from database.connection import _engine
+      Base.metadata.create_all(_engine)
     """
-    import asyncpg
     import re
+    import asyncpg
     
     # Extract connection details from DATABASE_URL
-    if not DATABASE_URL:
+    url_str = DATABASE_URL
+    if not url_str:
         raise ValueError("DATABASE_URL environment variable is not set")
     
-    url_str: str = DATABASE_URL
     match = re.match(r'postgresql[+\w]*://([^:]+):([^@]+)@([^/]+)/(\w+)', url_str)
     if match:
         user, password, host, database = match.groups()
         
-        # Test raw asyncpg connection (bypasses sync_engine issue)
+        # Test raw asyncpg connection (verify DB is reachable)
         conn = await asyncpg.connect(
             host=host,
             port=5432,
