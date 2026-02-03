@@ -99,6 +99,12 @@ jobs:
         env:
           DATABASE_URL: postgresql://test_user:test_password@localhost:5432/test_consilience
         run: |
+          # Verify alembic command exists
+          if ! alembic --help > /dev/null 2>&1; then
+             echo "Error: 'alembic' command not found."
+             exit 1
+          fi
+          
           # Check for orphaned migrations
           alembic check > check_output.txt 2>&1
           check_exit_code=$?

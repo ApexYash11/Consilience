@@ -52,8 +52,10 @@ def formatter_node(state: ResearchState) -> ResearchState:
             # Calculate revision cost
             try:
                 price_map = get_model_pricing(model)
-                rev_input_cost = (rev_prompt_tokens or 0) * price_map["input"]
-                rev_output_cost = (rev_completion_tokens or 0) * price_map["output"]
+                cost_per_token_input = (price_map.get("input", 0.0) or 0.0) / 1_000_000
+                cost_per_token_output = (price_map.get("output", 0.0) or 0.0) / 1_000_000
+                rev_input_cost = (rev_prompt_tokens or 0) * cost_per_token_input
+                rev_output_cost = (rev_completion_tokens or 0) * cost_per_token_output
                 state.cost = (state.cost or 0.0) + rev_input_cost + rev_output_cost
             except Exception:
                 logger.warning("Failed to calculate revision cost")
@@ -129,8 +131,8 @@ Return only the formatted paper."""
                     prompt_tokens = usage.get("prompt_tokens") or usage.get("input_tokens")
                     completion_tokens = usage.get("completion_tokens") or usage.get("output_tokens")
                 else:
-                    prompt_tokens = getattr(usage, "prompt_tokens", None) or getattr(usage, "input_tokens", None)
-                    completion_tokens = getattr(usage, "completion_tokens", None) or getattr(usage, "output_tokens", None)
+                    prompt_tokens = getattr(usage, "input_tokens", None) or getattr(usage, "prompt_tokens", None)
+                    completion_tokens = getattr(usage, "output_tokens", None) or getattr(usage, "completion_tokens", None)
 
             if (prompt_tokens is None or completion_tokens is None) and hasattr(response, "meta"):
                 meta = getattr(response, "meta")

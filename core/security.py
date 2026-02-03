@@ -91,25 +91,27 @@ class NeonSecurityManager:
             
             # Safe audience parsing
             audience = None
-            try:
-                if self.settings.database_url:
+            if self.settings.database_url:
+                try:
                     parsed = urlparse(self.settings.database_url)
                     if parsed.hostname:
                         audience = parsed.hostname.split('.')[0]
-            except Exception:
-                logger.warning("Could not derive audience from DATABASE_URL")
+                except Exception:
+                    logger.warning("Could not derive audience from DATABASE_URL")
+
+            if not audience:
+                # Fail closed if audience cannot be verified
+                logger.error("Audience could not be derived from settings, cannot verify token audience.")
+                raise HTTPException(
+                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                     detail="Security configuration error: Audience missing"
+                )
             
             # Prepare decoding arguments
             decode_kwargs = {
                 "algorithms": ["RS256"],
+                "audience": audience
             }
-            if audience:
-                decode_kwargs["audience"] = audience
-            else:
-                # If we rely on audience but can't find it, we might want to disable check
-                # or verification might fail if token has aud.
-                # Assuming Neon tokens might have audience based on project.
-                decode_kwargs["options"] = {"verify_aud": False}
 
             payload = jwt.decode(
                 token,
