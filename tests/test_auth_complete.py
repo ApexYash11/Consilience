@@ -278,14 +278,15 @@ def test_free_user_cannot_access_paid_endpoint(mock_current_user, mock_db):
     from fastapi import HTTPException
     
     with pytest.raises(HTTPException) as exc_info:
-        require_paid_tier(user)
+        require_paid_tier(user)  # type: ignore
     
     assert exc_info.value.status_code == 403
     assert "paid subscription" in exc_info.value.detail
 
 
+@pytest.mark.asyncio
 @patch("api.dependencies.get_current_user")
-def test_paid_user_can_access_paid_endpoint(mock_current_user):
+async def test_paid_user_can_access_paid_endpoint(mock_current_user):
     """Test that paid users can access premium endpoints."""
     from models.user import CurrentUser
     from api.dependencies import require_paid_tier
@@ -298,7 +299,7 @@ def test_paid_user_can_access_paid_endpoint(mock_current_user):
     )
     
     # Should not raise exception
-    result = require_paid_tier(paid_user)
+    result = await require_paid_tier(paid_user)  # type: ignore
     assert result.tier == "paid"
 
 
@@ -306,8 +307,9 @@ def test_paid_user_can_access_paid_endpoint(mock_current_user):
 # Admin Role Tests
 # ============================================================================
 
+@pytest.mark.asyncio
 @patch("api.dependencies.get_current_user")
-def test_admin_user_can_access_admin_endpoint(mock_current_user):
+async def test_admin_user_can_access_admin_endpoint(mock_current_user):
     """Test that admin users can access admin endpoints."""
     from models.user import CurrentUser
     from api.dependencies import require_admin
@@ -320,12 +322,13 @@ def test_admin_user_can_access_admin_endpoint(mock_current_user):
     )
     
     # Should not raise exception
-    result = require_admin(admin_user)
+    result = await require_admin(admin_user)  # type: ignore
     assert "admin" in result.roles
 
 
+@pytest.mark.asyncio
 @patch("api.dependencies.get_current_user")
-def test_non_admin_user_cannot_access_admin_endpoint(mock_current_user):
+async def test_non_admin_user_cannot_access_admin_endpoint(mock_current_user):
     """Test that non-admin users are blocked from admin endpoints."""
     from models.user import CurrentUser
     from api.dependencies import require_admin
@@ -339,7 +342,7 @@ def test_non_admin_user_cannot_access_admin_endpoint(mock_current_user):
     )
     
     with pytest.raises(HTTPException) as exc_info:
-        require_admin(regular_user)
+        await require_admin(regular_user)  # type: ignore
     
     assert exc_info.value.status_code == 403
     assert "Admin role required" in exc_info.value.detail

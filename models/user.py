@@ -27,6 +27,19 @@ class UserCreate(UserBase):
     password: str = Field(..., min_length=8)
 
 
+class UserLogin(BaseModel):
+    """User login credentials."""
+    email: EmailStr
+    password: str
+
+
+class TokenResponse(BaseModel):
+    """JWT token response."""
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
+
+
 class UserResponse(BaseModel):
     """User response model."""
     id: UUID

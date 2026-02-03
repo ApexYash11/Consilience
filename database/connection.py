@@ -8,6 +8,7 @@ from typing import AsyncGenerator
 from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.engine import URL
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -39,10 +40,21 @@ SessionLocal = sessionmaker(bind=_engine, autoflush=False, autocommit=False)
 # Create async engine for FastAPI
 if "postgresql" in DATABASE_URL:
     ASYNC_DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
+    if "postgresql+asyncpg" not in ASYNC_DATABASE_URL:
+        ASYNC_DATABASE_URL = DATABASE_URL  # Already has asyncpg
+    
+    # Remove sslmode from URL and add to connect_args
+    # asyncpg doesn't support sslmode as query parameter
+    if "sslmode=" in ASYNC_DATABASE_URL:
+        ASYNC_DATABASE_URL = ASYNC_DATABASE_URL.split("?")[0]  # Remove query params
+    
+    async_connect_args = {"ssl": "prefer"}
 elif "sqlite" in DATABASE_URL and "aiosqlite" not in DATABASE_URL:
     ASYNC_DATABASE_URL = DATABASE_URL.replace("sqlite://", "sqlite+aiosqlite://")
+    async_connect_args = {}
 else:
     ASYNC_DATABASE_URL = DATABASE_URL
+    async_connect_args = {}
 
 async_engine = create_async_engine(
     ASYNC_DATABASE_URL,
@@ -52,6 +64,7 @@ async_engine = create_async_engine(
     pool_size=20,
     max_overflow=0,
     pool_recycle=3600,
+    connect_args=async_connect_args if async_connect_args else None,
 )
 
 AsyncSessionLocal = async_sessionmaker(

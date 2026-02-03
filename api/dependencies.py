@@ -3,7 +3,7 @@ Dependency injection for FastAPI endpoints.
 Provides authenticated user context and database sessions.
 """
 
-from typing import Optional
+from typing import AsyncGenerator, Optional
 from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,9 +12,18 @@ from database.connection import get_async_session
 from models.user import CurrentUser
 
 
+async def get_db() -> AsyncGenerator[AsyncSession, None]:  # type: ignore
+    """
+    Dependency to get database session for async operations.
+    Provides an AsyncSession that can be used in endpoints.
+    """
+    async for session in get_async_session():
+        yield session
+
+
 async def get_current_user(
     authorization: Optional[str] = Header(None),
-    db: AsyncSession = Depends(get_async_session)
+    db: AsyncSession = Depends(get_db)
 ) -> CurrentUser:
     """
     Dependency to get current authenticated user.
