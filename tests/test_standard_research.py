@@ -45,7 +45,7 @@ class TestResearchServiceCRUD:
         
         assert task.id is not None
         assert task.user_id is not None  # type: ignore
-        assert task.topic is not None  # type: ignore
+        assert task.title is not None  # type: ignore
         assert task.status is not None  # type: ignore
         assert task.estimated_cost_usd == 0.0  # type: ignore
 
@@ -67,7 +67,7 @@ class TestResearchServiceCRUD:
         
         assert retrieved_task is not None
         assert retrieved_task.id  # type: ignore
-        assert retrieved_task.topic  # type: ignore
+        assert retrieved_task.title  # type: ignore
 
     @pytest.mark.asyncio
     async def test_get_nonexistent_task(self, async_session):

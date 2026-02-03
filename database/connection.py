@@ -24,6 +24,17 @@ if not DATABASE_URL:
 if "postgresql" in DATABASE_URL:
     # For Alembic, use standard PostgreSQL connection
     SYNC_DATABASE_URL = DATABASE_URL.replace("postgresql+asyncpg", "postgresql")
+    
+    # Parse and remove query parameters that psycopg2 doesn't support
+    url_obj = make_url(SYNC_DATABASE_URL)
+    query_params = dict(url_obj.query)
+    cleaned_query = {
+        key: value
+        for key, value in query_params.items()
+        if key.lower() not in ("sslmode", "channel_binding")
+    }
+    url_obj = url_obj.set(query=cleaned_query)
+    SYNC_DATABASE_URL = str(url_obj)
 else:
     SYNC_DATABASE_URL = DATABASE_URL
 
@@ -31,7 +42,8 @@ _engine = create_engine(
     SYNC_DATABASE_URL,
     future=True,
     pool_pre_ping=True,
-    echo=False
+    echo=False,
+    connect_args={"sslmode": "require"} if "postgresql" in DATABASE_URL else {}
 )
 
 SessionLocal = sessionmaker(bind=_engine, autoflush=False, autocommit=False)
@@ -55,7 +67,7 @@ if "postgresql" in DATABASE_URL:
     ASYNC_DATABASE_URL = str(url_obj)
 
     # Provide ssl handling via asyncpg connect args if needed
-    async_connect_args = {"ssl": "prefer"}
+    async_connect_args = {"ssl": "require"}
 elif "sqlite" in DATABASE_URL and "aiosqlite" not in DATABASE_URL:
     ASYNC_DATABASE_URL = DATABASE_URL.replace("sqlite://", "sqlite+aiosqlite://")
     async_connect_args = {}
@@ -102,11 +114,35 @@ async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def init_async_db():
-    """Initialize async database and create tables."""
-    from database.schema import Base
+    """Initialize async database and verify connection.
     
-    async with async_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    Note: Skips create_all() since migrations are run via Alembic.
+    Only verifies async connection works using raw asyncpg pool.
+    """
+    import asyncpg
+    import re
+    
+    # Extract connection details from DATABASE_URL
+    if not DATABASE_URL:
+        raise ValueError("DATABASE_URL environment variable is not set")
+    
+    url_str: str = DATABASE_URL
+    match = re.match(r'postgresql[+\w]*://([^:]+):([^@]+)@([^/]+)/(\w+)', url_str)
+    if match:
+        user, password, host, database = match.groups()
+        
+        # Test raw asyncpg connection (bypasses sync_engine issue)
+        conn = await asyncpg.connect(
+            host=host,
+            port=5432,
+            user=user,
+            password=password,
+            database=database,
+            ssl='require'
+        )
+        await conn.close()
+    else:
+        raise ValueError(f"Invalid DATABASE_URL format: {url_str}")
 
 
 def init_db():

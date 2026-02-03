@@ -32,7 +32,9 @@ def upgrade() -> None:
 
     if not users_exists and not research_tasks_exists:
         # Create Types first
-        subscription_tier_enum = sa.Enum('FREE', 'PRO', 'ENTERPRISE', name='subscriptiontier')
+        subscription_tier_enum = postgresql.ENUM(
+            'FREE', 'PRO', 'ENTERPRISE', name='subscriptiontier', create_type=False
+        )
         # Idempotent enum creation (avoids DuplicateObject on existing type)
         op.execute("""
         DO $$
