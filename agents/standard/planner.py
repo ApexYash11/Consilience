@@ -206,8 +206,10 @@ def parse_queries_from_response(response) -> list[str]:
         queries = []
         for line in lines:
             line = line.strip()
-            # Match: "1.", "1)", "1 -", "- " patterns more robustly
-            match = re.match(r'^[\d]+[\.\)\-]\s+(.+)$|^[\-\*]\s+(.+)$', line)
+            # Match: "1.", "1)", "1-", "1 -", "- " patterns more robustly
+            # First branch: digits followed by (period/paren OR optional-space-hyphen) then space and content
+            # Second branch: bullet point (- or *) followed by space and content
+            match = re.match(r'^[\d]+(?:[\.\)]|\s?-)\s+(.+)$|^[\-\*]\s+(.+)$', line)
             if match:
                 # Get the captured query (group 1 or 2, whichever matched)
                 query = (match.group(1) or match.group(2)).strip()
