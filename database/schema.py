@@ -19,7 +19,9 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    TIMESTAMP,
     create_engine,
+    func,
 )
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.ext.declarative import declarative_base
@@ -186,6 +188,8 @@ class ResearchTaskDB(Base):
     # Relationships
     user = relationship("UserDB", back_populates="tasks")
     agent_actions = relationship("AgentActionDB", back_populates="task")
+    token_logs = relationship("TokenUsageLogDB", back_populates="task")
+    checkpoints = relationship("ResearchCheckpointDB", back_populates="task")
     
     def __repr__(self):
         return f"<ResearchTask {self.id} ({self.status})>"
@@ -317,6 +321,86 @@ class AuditLogDB(Base):
     
     def __repr__(self):
         return f"<AuditLog {self.timestamp} {self.actor} {self.action}>"
+
+
+# ============================================================================
+# GRANULAR TOKEN TRACKING
+# ============================================================================
+
+class TokenUsageLogDB(Base):
+    """Granular token tracking per LLM API call."""
+    
+    __tablename__ = "token_usage_logs"
+    
+    id = Column(GUID, primary_key=True, default=uuid4)
+    task_id = Column(GUID, ForeignKey("research_tasks.id"), nullable=False, index=True)
+    
+    # Agent info
+    agent_name = Column(String(100), nullable=False)  # "planner", "researcher_1", etc.
+    model = Column(String(100), nullable=False)  # "sonnet-3.5", "gpt-4", etc.
+    
+    # Token counts
+    prompt_tokens = Column(Integer, nullable=False)
+    completion_tokens = Column(Integer, nullable=False)
+    total_tokens = Column(Integer, nullable=False)
+    
+    # Cost
+    cost_usd = Column(Numeric(10, 6), nullable=False)
+    
+    # Content preview (for debugging)
+    input_preview = Column(String(500))
+    output_preview = Column(String(500))
+    
+    # Timing
+    duration_seconds = Column(Numeric(8, 3))
+    created_at = Column(TIMESTAMP, server_default=func.now())
+    
+    # Relationships
+    task = relationship("ResearchTaskDB", back_populates="token_logs")
+
+
+# ============================================================================
+# RESEARCH CHECKPOINT TABLE
+# ============================================================================
+
+class ResearchCheckpointDB(Base):
+    """
+    Snapshots of ResearchState after each agent completes.
+    
+    Enables resumption from failed nodes without re-running all prior agents.
+    """
+    
+    __tablename__ = "research_checkpoints"
+    
+    id = Column(GUID, primary_key=True, default=uuid4)
+    task_id = Column(GUID, ForeignKey("research_tasks.id"), nullable=False, index=True)
+    
+    # Which agent completed
+    agent_name = Column(String(100), nullable=False)
+    agent_type = Column(String(50), nullable=False)
+    sequence_number = Column(Integer, nullable=False)  # 1st, 2nd, 3rd agent...
+    
+    # Full state snapshot as JSON
+    state_snapshot_json = Column(JSON, nullable=False)
+    
+    # Metadata
+    status_before = Column(String(50))  # PENDING, RUNNING, COMPLETED, FAILED
+    status_after = Column(String(50))
+    duration_seconds = Column(Numeric(8, 3))
+    
+    # Keys for resume
+    is_resumable = Column(Boolean, default=True)  # Can workflow resume from this point?
+    error_message = Column(String(500))  # If failed
+    
+    created_at = Column(TIMESTAMP, server_default=func.now())
+    
+    # Relationships
+    task = relationship("ResearchTaskDB", back_populates="checkpoints")
+
+
+# Update ResearchTaskDB to include checkpoints
+# In ResearchTaskDB class:
+checkpoints = relationship("ResearchCheckpointDB", back_populates="task")
 
 
 # ============================================================================

@@ -110,6 +110,19 @@ class ResearchState(BaseModel):
     tokens_used: int = 0
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
+    execution_metrics: Optional[Dict[str, Any]] = None  # NEW: parallelism, duration, critical_path
+
+    # Error handling
+    errors: List[str] = []  # NEW: per-agent errors (don't fail entire workflow)
+
+    # Routing decisions (used in conditional edges)
+    revision_needed: bool = False  # Set by Reviewer if major issues found
+    synthesis_confidence: float = 1.0  # 0.0-1.0, set by Synthesizer
+    source_quality_score: float = 0.0  # 0.0-1.0, set by Verifier
+    verifier_rejection_count: int = 0  # Track failed verification attempts
+    max_revision_attempts: int = 2  # Prevent infinite loops
+    current_revision_attempt: int = 0  # Track current attempt
+    fallback_triggered: bool = False  # Did we trigger fallback search?
 
     class Config:
         """Pydantic config for serialization."""

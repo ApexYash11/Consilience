@@ -24,6 +24,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from database.schema import Base
 from api.main import app
 from models.user import CurrentUser
+from models.research import TaskStatus, Source
 
 
 # ============================================================================
@@ -252,9 +253,22 @@ def mock_token_claims_admin():
 
 
 @pytest.fixture
-def auth_service(db_session):
-    """Create an auth service instance for testing."""
-    from services.neon_auth_service import NeonAuthService
+async def mock_orchestrator(mocker):
+    """Mock orchestrator to return instant results."""
     
-    service = NeonAuthService(db=db_session)
-    return service
+    async def mock_run_research(state):
+        # Simulate successful completion
+        state.status = TaskStatus.COMPLETED
+        state.final_paper = "# Research Paper\n\nGenerated content."
+        state.sources = [
+            Source(id="source1", url="https://example.com/1", title="Source 1", credibility=0.9),
+        ]
+        state.cost = 1.50
+        state.tokens_used = 3000
+        state.end_time = datetime.utcnow()
+        return state
+    
+    mocker.patch(
+        "orchestrator.standard_orchestrator.run_research",
+        side_effect=mock_run_research,
+    )

@@ -7,7 +7,19 @@ Uses DeepSeek R1-0528 (free) for planning phase.
 - $0.00 cost
 """
 
+import json
+import logging
+import re
+import time
+from datetime import datetime
+from uuid import UUID
+
 from langchain_openai import ChatOpenAI
+from langchain_core.messages import HumanMessage
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+from sqlalchemy import select
+
 from models.research import ResearchState, TaskStatus
 from config.models import (
     get_model_for_phase,
@@ -16,45 +28,30 @@ from config.models import (
     OPENROUTER_CONFIG,
 )
 from utils.cost_estimator import estimate_cost_from_response
-import json
-import logging
-import re
+from services.openrouter_client import extract_token_usage
+from services.research_service import ResearchService
+from agents.base_agent import BaseAgent
+from database.connection import AsyncSessionLocal
 
 logger = logging.getLogger(__name__)
 
+# Create agent instance (with retry config)
+_planner = BaseAgent("planner", "planning")
 
-def planner_node(state: ResearchState) -> ResearchState:
+
+async def planner_node(state: ResearchState) -> ResearchState:
     """
-    PLANNER NODE - Research Query Decomposition
-
-    **Input**: ResearchState with:
-        - task_id: Unique identifier
-        - topic: Research subject
-        - requirements: User constraints/preferences
-
-    **Output**: ResearchState with:
-        - research_queries: List of 5 specific search queries
-        - research_plan: Strategy explanation
-
-    **Purpose**:
-        Break down a broad research topic into specific, searchable queries.
-        Creates the blueprint that researchers will execute in parallel.
-
-    **Example**:
-        Input topic: "Climate change impacts on agriculture"
-        Output queries: [
-            "climate change crop yields 2024",
-            "global warming food security effects",
-            "agricultural adaptation climate change",
-            "extreme weather agriculture economic impact",
-            "sustainable farming climate resilience"
-        ]
-
-    **Model**: DeepSeek R1-0528 (free)
-        - Matches o1 performance on reasoning
-        - 164K context window
-        - $0.00 cost
+    Plan research with automatic retry on failures.
     """
+    
+    agent_name = "planner"
+    agent_type = "planning"
+    sequence_number = 1
+    start_time = time.time()
+    state_before_status = state.status
+    
+    logger.info(f"[{agent_name}] Starting for task {state.task_id}")
+    
     try:
         # Initialize LLM with correct model
         model = get_model_for_phase(
@@ -65,100 +62,145 @@ def planner_node(state: ResearchState) -> ResearchState:
         llm = ChatOpenAI(
             model=model,
             temperature=0.7,
-            max_completion_tokens=2000,
             **OPENROUTER_CONFIG,
         )
 
-        # Build prompt with research context
-        prompt = f"""You are a world-class research planning expert with deep knowledge across all academic domains.
-
-Your task: Break down a research topic into 5 specific, searchable queries that will find the best academic sources.
-
-RESEARCH TOPIC
---------------
-{state.topic}
-
-REQUIREMENTS & CONSTRAINTS
----------------------------
-{json.dumps(state.requirements, indent=2) if state.requirements else "None specified"}
-
-YOUR TASK
----------
-1. Analyze the topic for key concepts and subtopics
-2. Consider different angles and perspectives
-3. Create 5 highly specific, searchable queries that:
-   - Are distinct from each other (different angles)
-   - Use concrete keywords for better search results
-   - Cover breadth and depth of the topic
-   - Respect the user's requirements
-
-4. Briefly explain your research strategy
-
-RESPONSE FORMAT
----------------
-Return a JSON object with:
-{{
-    "queries": [
-        "specific query 1",
-        "specific query 2",
-        "specific query 3",
-        "specific query 4",
-        "specific query 5"
-    ],
-    "strategy": "Brief explanation of research approach and why these queries",
-    "confidence": "High/Medium/Low - your confidence in covering the topic"
-}}
-
-CRITICAL: Return ONLY valid JSON, no additional text."""
-
-        # Call LLM
-        response = llm.invoke(prompt)
-
-        # Parse response
-        content = response.content
-        if not isinstance(content, str):
-            content = str(content)
-
-        try:
-            result = json.loads(content)
-        except json.JSONDecodeError:
-            json_match = re.search(r"\{.*\}", content, re.DOTALL)
-            if json_match:
-                result = json.loads(json_match.group())
-            else:
-                logger.error(f"Failed to parse planner response: {content}")
-                raise ValueError("Invalid JSON in planner response")
-
-        # Validate output
-        if "queries" not in result or not isinstance(result["queries"], list):
-            raise ValueError("Planner response missing 'queries' field")
-
-        # Reject empty queries list explicitly
-        if len(result["queries"]) <= 0:
-            logger.error("Planner returned an empty 'queries' list")
-            raise ValueError("Planner response contains an empty 'queries' list")
-
-        if len(result["queries"]) < 5:
-            logger.warning(
-                f"Planner returned {len(result['queries'])} queries, expected 5"
-            )
-
-        # Update state with planning results
-        state.research_queries = result["queries"]
-        state.research_plan = result.get("strategy", "Research strategy not provided")
-
-        # Track tokens and cost
-        cost_info = estimate_cost_from_response(response, model)
-        state.tokens_used = (state.tokens_used or 0) + cost_info.get("total_tokens", 0)
-        state.cost = (state.cost or 0.0) + cost_info.get("cost", 0.0)
-
-        logger.info(
-            f"Planner created {len(state.research_queries)} queries for topic: {state.topic}"
+        # 1. Prepare prompt
+        prompt = f"""You are a research planning expert...
+        Topic: {state.topic}
+        """
+        
+        # 2. Call LLM with retry
+        response = await _planner.call_llm_with_retry(
+            llm.ainvoke,
+            [HumanMessage(content=prompt)],
+            timeout_seconds=60.0,  # 1 minute per call
         )
-
+        
+        # 3. Extract tokens
+        tokens = await extract_token_usage(response)
+        cost_info = estimate_cost_from_response(response, model=model)
+        duration = time.time() - start_time
+        
+        # 4. Log to token usage table (DB)
+        async with AsyncSessionLocal() as session:
+            await ResearchService.log_token_usage(
+                session=session,
+                task_id=UUID(state.task_id),
+                agent_name="planner",
+                model=model,
+                prompt_tokens=tokens["prompt_tokens"],
+                completion_tokens=tokens["completion_tokens"],
+                cost_usd=cost_info["cost"],
+                input_preview=prompt[:200],
+                output_preview=response.content[:200],
+                duration_seconds=duration,
+            )
+        
+        # 5. Update state
+        state.research_queries = parse_queries_from_response(response)
+        state.research_plan = response.content[:500]  # Store first 500 chars as plan
+        state.tokens_used = (state.tokens_used or 0) + tokens["total_tokens"]
+        state.cost = (state.cost or 0.0) + cost_info["cost"]
+        
+        # Log agent action to DB (after successful completion)
+        async with AsyncSessionLocal() as session:
+            # 1. Log the action itself
+            await ResearchService.log_agent_action(
+                session=session,
+                task_id=UUID(state.task_id),
+                agent_name=agent_name,
+                agent_type=agent_type,
+                action="planning",
+                tokens_used=tokens["total_tokens"],
+                cost_usd=cost_info["cost"],
+                input_data={"topic": state.topic, "requirements": state.requirements},
+                output_data={"queries": state.research_queries, "plan": state.research_plan},
+            )
+            
+            # 2. Save checkpoint (state snapshot)
+            await ResearchService.save_checkpoint(
+                session=session,
+                task_id=UUID(state.task_id),
+                agent_name=agent_name,
+                agent_type=agent_type,
+                sequence_number=sequence_number,
+                state_snapshot=state,
+                status_before=state_before_status,
+                status_after=TaskStatus.RUNNING,
+                duration_seconds=time.time() - start_time,
+            )
+        
+        logger.info(f"[{agent_name}] Completed successfully")
         return state
-
+        
     except Exception as e:
-        logger.error(f"Planner node failed: {str(e)}", exc_info=True)
+        logger.error(f"[{agent_name}] Failed: {str(e)}", exc_info=True)
+        
+        # Log failure to DB
+        async with AsyncSessionLocal() as session:
+            await ResearchService.log_agent_action(
+                session=session,
+                task_id=UUID(state.task_id),
+                agent_name=agent_name,
+                agent_type=agent_type,
+                action="planning",
+                error=str(e),  # Include error
+            )
+            
+            # Save checkpoint (marked non-resumable)
+            await ResearchService.save_checkpoint(
+                session=session,
+                task_id=UUID(state.task_id),
+                agent_name=agent_name,
+                agent_type=agent_type,
+                sequence_number=sequence_number,
+                state_snapshot=state,
+                status_before=state_before_status,
+                status_after=TaskStatus.FAILED,
+                duration_seconds=time.time() - start_time,
+                error=str(e),
+            )
+        
         state.status = TaskStatus.FAILED
-        raise ValueError(f"Planning failed: {str(e)}") from e
+        raise ValueError(f"[{agent_name}] failed: {str(e)}") from e
+
+
+def parse_queries_from_response(response) -> list[str]:
+    """
+    Extract research queries from LLM response.
+    
+    Expects response to contain a JSON-formatted list of queries
+    or numbered queries in plain text format.
+    """
+    try:
+        # Extract content from response
+        content = response.content if hasattr(response, 'content') else str(response)
+        
+        try:
+            data = json.loads(content)
+            if isinstance(data, list):
+                return [str(q).strip() for q in data[:5]]  # Max 5 queries
+            elif isinstance(data, dict) and 'queries' in data:
+                return [str(q).strip() for q in data['queries'][:5]]
+        except json.JSONDecodeError:
+            pass
+        
+        # Fallback: extract numbered items
+        lines = content.split('\n')
+        queries = []
+        for line in lines:
+            line = line.strip()
+            # Look for numbered lists (1., 2., etc.) or bullet points
+            if re.match(r'^[\d\.\-\*]\s+', line):
+                # Remove the number/bullet prefix
+                query = re.sub(r'^[\d\.\-\*]\s+', '', line).strip()
+                if query:
+                    queries.append(query)
+        
+        # Return up to 5 queries
+        return queries[:5] if queries else ["research topic analysis"]
+        
+    except Exception as e:
+        logger.warning(f"Failed to parse queries from response: {str(e)}")
+        return ["research topic analysis"]

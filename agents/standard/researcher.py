@@ -10,7 +10,17 @@ Uses Qwen 2.5 7B (free) for research phase.
 Execution: 5 researchers run in parallel, each gets 1 query from the plan.
 """
 
+import asyncio
+import json
+import logging
+import time
+from datetime import datetime
+from typing import Dict, List, Tuple, Optional
+from uuid import UUID
+
 from langchain_openai import ChatOpenAI
+from langchain_core.messages import HumanMessage
+
 from models.research import ResearchState, Source, TaskStatus
 from config.models import (
     get_model_for_phase,
@@ -19,83 +29,96 @@ from config.models import (
     OPENROUTER_CONFIG,
 )
 from utils.cost_estimator import estimate_cost_from_response
-from typing import Dict, List, Tuple
-import json
-import logging
-from datetime import datetime
+from services.openrouter_client import extract_token_usage
+from services.research_service import ResearchService
+from database.connection import AsyncSessionLocal
 
 logger = logging.getLogger(__name__)
 
 
-async def researcher_node(state: ResearchState, researcher_id: int) -> ResearchState:
+async def researcher_node(state: ResearchState, researcher_index: int = 0) -> ResearchState:
     """
-    RESEARCHER NODE - Source Collection
-
-    **Input**: ResearchState with:
-        - research_queries: List of 5 specific search queries
-        - sources: Initial empty list
-
-    **Output**: ResearchState with:
-        - sources: Extended list with new sources from this query
-
-    **Execution**: Runs 5 times in parallel (one per query)
-        - Researcher 0: Searches query[0]
-        - Researcher 1: Searches query[1]
-        - ...
-        - Researcher 4: Searches query[4]
-        
-        Total time: Same as searching 1 query (parallel execution)
-
-    **Process**:
-        1. Get assigned query
-        2. Search web + academic databases
-        3. Evaluate source credibility
-        4. Add sources to state
-        5. Track cost and tokens
-
-    **Output**: 3 sources per researcher (15 total sources)
-
-    **Model**: Qwen 2.5 7B (free)
-        - Fast inference for parallel execution
-        - 131K context window
-        - Strong general task performance
-        - $0.00 cost
+    Research agent node with timeout & retry logic.
+    
+    Called 5 times in parallel from graph (via multiple edges).
+    Each researcher gets 180 seconds (3 minutes) to find sources.
     """
-    query = ""
+    
+    researcher_id = f"researcher_{researcher_index + 1}"
+    start_time_dt = datetime.utcnow()
+    start_time = time.time()
+    
     try:
-        # Get the query for this researcher
-        if researcher_id >= len(state.research_queries):
-            logger.warning(
-                f"Researcher {researcher_id} has no query (only {len(state.research_queries)} queries)"
+        # Wrap with timeout to prevent hanging
+        async with asyncio.timeout(180):  # 3 minutes per researcher
+            
+            # Get the query for this researcher
+            if researcher_index >= len(state.research_queries):
+                logger.warning(f"{researcher_id}: No query assigned")
+                return state
+            
+            query = state.research_queries[researcher_index]
+            
+            # Get LLM model
+            model = get_model_for_phase(
+                research_mode=ResearchMode.STANDARD,
+                phase=ModelPhase.RESEARCH,
             )
+            
+            llm = ChatOpenAI(
+                model=model,
+                temperature=0.7,
+                **OPENROUTER_CONFIG,
+            )
+            
+            # Call LLM to find sources
+            prompt_text = f"Find 3 credible academic sources on: {query}"
+            response = await llm.ainvoke([HumanMessage(content=prompt_text)])
+            
+            # Extract tokens and costs
+            tokens = await extract_token_usage(response)
+            cost_info = estimate_cost_from_response(response, model=model)
+            
+            # Parse sources from response
+            found_sources = parse_sources_from_response(response, researcher_index)
+            if found_sources:
+                if not hasattr(state, 'sources') or state.sources is None:
+                    state.sources = []
+                state.sources.extend(found_sources)
+            
+            # Track execution
+            state.tokens_used = (state.tokens_used or 0) + tokens["total_tokens"]
+            state.cost = (state.cost or 0.0) + cost_info["cost"]
+            
+            # Log to DB
+            async with AsyncSessionLocal() as session:
+                await ResearchService.log_token_usage(
+                    session=session,
+                    task_id=UUID(state.task_id),
+                    agent_name=researcher_id,
+                    model=model,
+                    prompt_tokens=tokens["prompt_tokens"],
+                    completion_tokens=tokens["completion_tokens"],
+                    cost_usd=cost_info["cost"],
+                    input_preview=query[:100],
+            output_preview=str(response.content)[:100] if hasattr(response, 'content') else "",
+                    duration_seconds=time.time() - start_time,
+                )
+            
             return state
-
-        query = state.research_queries[researcher_id]
-        logger.info(f"Researcher {researcher_id} searching for: {query}")
-
-        # Search for sources
-        sources, cost_info = await search_sources(query, researcher_id)
-
-        # Add to state
-        if sources:
-            state.sources.extend(sources)
-            logger.info(
-                f"Researcher {researcher_id} found {len(sources)} sources | Cost: ${cost_info.get('cost', 0):.4f}"
-            )
-
-            # Track tokens and cost
-            state.tokens_used = (state.tokens_used or 0) + cost_info.get("total_tokens", 0)
-            state.cost = (state.cost or 0.0) + cost_info.get("cost", 0.0)
-
+            
+    except asyncio.TimeoutError:
+        logger.warning(f"{researcher_id} timed out after 180 seconds")
+        if not hasattr(state, 'errors') or state.errors is None:
+            state.errors = []
+        state.errors.append(f"{researcher_id}: Timeout")
         return state
-
     except Exception as e:
-        logger.error(
-            f"Researcher {researcher_id} failed on query '{query}': {str(e)}",
-            exc_info=True,
-        )
-        state.status = TaskStatus.FAILED
-        raise ValueError(f"Researcher {researcher_id} failed: {str(e)}") from e
+        logger.error(f"{researcher_id} failed: {str(e)}")
+        if not hasattr(state, 'errors') or state.errors is None:
+            state.errors = []
+        state.errors.append(f"{researcher_id}: {str(e)}")
+        return state
 
 
 async def search_sources(query: str, researcher_id: int) -> Tuple[List[Source], Dict]:
@@ -229,3 +252,60 @@ CRITICAL: Return ONLY the JSON array, no other text."""
         logger.error(f"search_sources failed for query '{query}': {str(e)}", exc_info=True)
         # On failure, do not return partially-built sources — return empty results
         return [], {"total_tokens": 0, "cost": 0.0}
+
+
+def parse_sources_from_response(response, researcher_index: int) -> List[Source]:
+    """
+    Parse source references from LLM response.
+    
+    Expects response to contain URLs, paper citations, or structured source data.
+    Returns up to 3 Source objects extracted from the response.
+    """
+    try:
+        import json
+        import re
+        
+        content = response.content if hasattr(response, 'content') else str(response)
+        sources = []
+        
+        # Try to parse as JSON first
+        try:
+            data = json.loads(content)
+            if isinstance(data, list):
+                for item in data[:3]:
+                    if isinstance(item, dict):
+                        source = Source(
+                            id=f"source_{researcher_index}_{len(sources)}",
+                            url=item.get('url', f"https://source-{researcher_index}-{len(sources)}.example.com"),
+                            title=item.get('title', f"Source {len(sources) + 1}"),
+                            authors=[item.get('author', 'Unknown')]  if item.get('author') else None,
+                            year=item.get('year', 2024),
+                            credibility=float(item.get('credibility_score', 0.7)),
+                            relevance_score=float(item.get('relevance_score', 0.8)),
+                        )
+                        sources.append(source)
+        except (json.JSONDecodeError, ValueError):
+            pass
+        
+        # Fallback: extract URLs from text
+        if not sources:
+            url_pattern = r'https?://[^\s\)>]+'
+            urls = re.findall(url_pattern, content)
+            
+            for i, url in enumerate(urls[:3]):
+                source = Source(
+                    id=f"source_{researcher_index}_{i}",
+                    url=url,
+                    title=f"Source {i + 1}",
+                    authors=["Unknown"] if url else None,
+                    year=2024,
+                    credibility=0.7,
+                    relevance_score=0.8,
+                )
+                sources.append(source)
+        
+        return sources[:3]  # Max 3 sources per researcher
+        
+    except Exception as e:
+        logger.warning(f"Failed to parse sources from response: {str(e)}")
+        return []
