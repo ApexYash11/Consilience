@@ -5,7 +5,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database.schema import ResearchTaskDB, AgentActionDB
+from database.schema import ResearchTaskDB, AgentActionDB, TokenUsageLogDB, ResearchCheckpointDB
 from models.research import TaskStatus, ResearchDepth, ResearchState
 import logging
 
@@ -227,3 +227,72 @@ class ResearchService:
                 "estimated_cost_usd": 2.5,  # Deep uses paid Kimi K2.5
                 "estimated_time_minutes": 15,
             }
+
+    @staticmethod
+    async def log_token_usage(
+        session: AsyncSession,
+        task_id: UUID,
+        agent_name: str,
+        model: str,
+        prompt_tokens: int,
+        completion_tokens: int,
+        cost_usd: float,
+        input_preview: Optional[str] = None,
+        output_preview: Optional[str] = None,
+        duration_seconds: Optional[float] = None,
+    ) -> TokenUsageLogDB:
+        """
+        Log individual token usage per LLM call.
+
+        Called from agent nodes after each LLM invocation.
+        Enables cost breakdown and token analysis.
+        """
+        log_entry = TokenUsageLogDB(
+            task_id=task_id,
+            agent_name=agent_name,
+            model=model,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=prompt_tokens + completion_tokens,
+            cost_usd=cost_usd,
+            input_preview=input_preview,
+            output_preview=output_preview,
+            duration_seconds=duration_seconds,
+        )
+        session.add(log_entry)
+        await session.commit()
+        return log_entry
+
+    @staticmethod
+    async def save_checkpoint(
+        session: AsyncSession,
+        task_id: UUID,
+        agent_name: str,
+        agent_type: str,
+        sequence_number: int,
+        state_snapshot: ResearchState,
+        status_before: TaskStatus,
+        status_after: TaskStatus,
+        duration_seconds: float,
+        error: Optional[str] = None,
+    ) -> ResearchCheckpointDB:
+        """
+        Save state checkpoint after agent completes.
+
+        Enables resume if agent fails.
+        """
+        checkpoint = ResearchCheckpointDB(
+            task_id=task_id,
+            agent_name=agent_name,
+            agent_type=agent_type,
+            sequence_number=sequence_number,
+            state_snapshot_json=state_snapshot.model_dump(),
+            status_before=status_before.value,
+            status_after=status_after.value,
+            duration_seconds=duration_seconds,
+            is_resumable=error is None,
+            error_message=error,
+        )
+        session.add(checkpoint)
+        await session.commit()
+        return checkpoint

@@ -48,7 +48,7 @@ class ResearchResultResponse(BaseModel):
     total_tokens: int
 
 
-router = APIRouter(prefix="/api/research", tags=["research"])
+router = APIRouter(tags=["research"])
 
 # Background task tracking
 _running_tasks: dict = {}  # type: ignore
