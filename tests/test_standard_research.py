@@ -385,19 +385,19 @@ from fastapi.testclient import TestClient
 class TestStandardResearchE2EIntegration:
     """End-to-end tests for /api/research/standard endpoint."""
     
-    @pytest.fixture
+    @pytest.fixture  
     def app(self):
         """Return FastAPI app for testing."""
         from api.main import app
         return app
     
     @pytest.fixture
-    async def api_client(self, app):
-        """Create test client for API."""
+    async def api_client(self, app, override_auth_for_testing):
+        """Create test client for API with auth mocking."""
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://testserver") as client:
             yield client
     
-    async def test_create_research_task_success(self, api_client, user_id, db_session):
+    async def test_create_research_task_success(self, api_client, user_id, db_session, valid_jwt_token):
         """Test successful research task creation."""
         
         response = await api_client.post(
@@ -408,9 +408,9 @@ class TestStandardResearchE2EIntegration:
                     "min_sources": 3,
                     "focus_areas": ["crop yields", "water availability"],
                 },
-                "depth": "STANDARD",
+                "depth": "standard",
             },
-            headers={"Authorization": f"Bearer test-token-{user_id}"},
+            headers={"Authorization": f"Bearer {valid_jwt_token}"},
         )
         
         assert response.status_code == 200
@@ -431,21 +431,21 @@ class TestStandardResearchE2EIntegration:
         assert str(task.user_id) == str(user_id)
         assert str(task.status) == str(TaskStatus.PENDING.value)
     
-    async def test_research_status_progression(self, api_client, user_id):
+    async def test_research_status_progression(self, api_client, user_id, valid_jwt_token):
         """Test status progression over time."""
         
         # 1. Create task
         response = await api_client.post(
             "/api/research/standard",
             json={"topic": "Quantum computing"},
-            headers={"Authorization": f"Bearer test-token-{user_id}"},
+            headers={"Authorization": f"Bearer {valid_jwt_token}"},
         )
         task_id = response.json()["task_id"]
         
         # 2. Poll status (should be PENDING initially)
         response = await api_client.get(
             f"/api/research/standard/{task_id}/status",
-            headers={"Authorization": f"Bearer test-token-{user_id}"},
+            headers={"Authorization": f"Bearer {valid_jwt_token}"},
         )
         assert response.json()["status"] == "PENDING"
         
@@ -456,19 +456,19 @@ class TestStandardResearchE2EIntegration:
         # 4. Poll again (would be RUNNING or COMPLETED depending on speed)
         response = await api_client.get(
             f"/api/research/standard/{task_id}/status",
-            headers={"Authorization": f"Bearer test-token-{user_id}"},
+            headers={"Authorization": f"Bearer {valid_jwt_token}"},
         )
         status = response.json()["status"]
         assert status in ["PENDING", "RUNNING", "COMPLETED", "FAILED"]
     
-    async def test_research_result_retrieval(self, api_client, user_id, db_session, mocker):
+    async def test_research_result_retrieval(self, api_client, user_id, db_session, valid_jwt_token, mocker):
         """Test retrieving research results after completion."""
         
         # Create task
         response = await api_client.post(
             "/api/research/standard",
             json={"topic": "AI safety"},
-            headers={"Authorization": f"Bearer test-token-{user_id}"},
+            headers={"Authorization": f"Bearer {valid_jwt_token}"},
         )
         task_id = response.json()["task_id"]
         
@@ -499,7 +499,7 @@ class TestStandardResearchE2EIntegration:
         # Retrieve results
         response = await api_client.get(
             f"/api/research/standard/{task_id}/result",
-            headers={"Authorization": f"Bearer test-token-{user_id}"},
+            headers={"Authorization": f"Bearer {valid_jwt_token}"},
         )
         
         assert response.status_code == 200
@@ -510,7 +510,7 @@ class TestStandardResearchE2EIntegration:
         assert result["total_cost"] == 2.50
         assert result["total_tokens"] == 5000
     
-    async def test_research_with_token_breakdown(self, api_client, user_id, db_session):
+    async def test_research_with_token_breakdown(self, api_client, user_id, db_session, valid_jwt_token):
         """Test retrieving token usage breakdown."""
         
         # Create and complete a task with logged tokens
@@ -539,7 +539,7 @@ class TestStandardResearchE2EIntegration:
         # Retrieve breakdown
         response = await api_client.get(
             f"/api/research/standard/{task_id}/tokens",
-            headers={"Authorization": f"Bearer test-token-{user_id}"},
+            headers={"Authorization": f"Bearer {valid_jwt_token}"},
         )
         
         assert response.status_code == 200
@@ -549,26 +549,26 @@ class TestStandardResearchE2EIntegration:
         assert tokens[0]["tokens"] == 1500
         assert tokens[1]["cost"] == 1.20
     
-    async def test_research_error_handling(self, api_client, user_id):
+    async def test_research_error_handling(self, api_client, user_id, valid_jwt_token):
         """Test error handling on invalid requests."""
         
         # Missing required field
         response = await api_client.post(
             "/api/research/standard",
             json={},  # No topic
-            headers={"Authorization": f"Bearer test-token-{user_id}"},
+            headers={"Authorization": f"Bearer {valid_jwt_token}"},
         )
         
         assert response.status_code == 422  # Validation error
         assert "topic" in response.text.lower()
     
-    async def test_quota_enforcement(self, api_client, user_id_with_zero_quota):
+    async def test_quota_enforcement(self, api_client, user_id_with_zero_quota, valid_jwt_token):
         """Test that user can't research if quota exhausted."""
         
         response = await api_client.post(
             "/api/research/standard",
             json={"topic": "Test"},
-            headers={"Authorization": f"Bearer test-token-{user_id_with_zero_quota}"},
+            headers={"Authorization": f"Bearer {valid_jwt_token}"},
         )
         
         assert response.status_code == 429  # Too many requests OR 403 Forbidden

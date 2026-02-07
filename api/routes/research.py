@@ -173,14 +173,14 @@ async def create_standard_research(
         # Create research task in database
         task = await ResearchService.save_research_task(
             session=db,
-            user_id=UUID(user.id),  # type: ignore
+            user_id=UUID(user.user_id),  # type: ignore
             topic=request.topic,
             research_depth=request.depth,
             title=f"Research: {request.topic}",
             description=f"Standard research task for {request.topic}",
             estimated_cost_usd=cost_estimate["estimated_cost_usd"],
         )
-        logger.info(f"Created research task {task.id} for user {user.id}")  # type: ignore
+        logger.info(f"Created research task {task.id} for user {user.user_id}")  # type: ignore
 
         # Create ResearchState for workflow
         state = ResearchState(
@@ -248,7 +248,7 @@ async def get_research_status(
             raise HTTPException(status_code=404, detail="Task not found")
         
         # Verify user owns task
-        if task.user_id != UUID(user.id):  # type: ignore
+        if task.user_id != UUID(user.user_id):  # type: ignore
             raise HTTPException(status_code=403, detail="Not authorized")
         
         # Estimate progress based on status
@@ -310,7 +310,7 @@ async def get_research_result(
             raise HTTPException(status_code=404, detail="Task not found")
         
         # Verify user owns task
-        if task.user_id != UUID(user.id):  # type: ignore
+        if task.user_id != UUID(user.user_id):  # type: ignore
             raise HTTPException(status_code=403, detail="Not authorized")
         
         # Check if task is completed

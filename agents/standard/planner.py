@@ -66,9 +66,14 @@ async def planner_node(state: ResearchState) -> ResearchState:
         )
 
         # 1. Prepare prompt
-        prompt = f"""You are a research planning expert...
-        Topic: {state.topic}
-        """
+        prompt = f"""You are a research planning expert. Break down the topic into 5 specific, searchable research queries.
+Respond with a JSON array of query strings.
+
+Topic: {state.topic}
+Requirements: {json.dumps(state.requirements or {})}
+
+Respond ONLY with JSON array of 5 queries: ["query1", "query2", "query3", "query4", "query5"]
+"""
         
         # 2. Call LLM with retry
         response = await _planner.call_llm_with_retry(
@@ -172,11 +177,21 @@ def parse_queries_from_response(response) -> list[str]:
     
     Expects response to contain a JSON-formatted list of queries
     or numbered queries in plain text format.
+    
+    Handles null/missing response content safely.
     """
     try:
-        # Extract content from response
-        content = response.content if hasattr(response, 'content') else str(response)
+        # Extract content from response (handle null-safety)
+        if response is None:
+            logger.warning("Response is None")
+            return ["research topic analysis"]
         
+        content = response.content if hasattr(response, 'content') and response.content else str(response)
+        if not content or not isinstance(content, str):
+            logger.warning(f"Invalid response content: {type(content)}")
+            return ["research topic analysis"]
+        
+        # Try to parse as JSON first
         try:
             data = json.loads(content)
             if isinstance(data, list):
@@ -191,14 +206,17 @@ def parse_queries_from_response(response) -> list[str]:
         queries = []
         for line in lines:
             line = line.strip()
-            # Look for numbered lists (1., 2., etc.) or bullet points
-            if re.match(r'^[\d\.\-\*]\s+', line):
-                # Remove the number/bullet prefix
-                query = re.sub(r'^[\d\.\-\*]\s+', '', line).strip()
-                if query:
+            # Match: "1.", "1)", "1-", "1 -", "- " patterns more robustly
+            # First branch: digits followed by (period/paren OR optional-space-hyphen) then space and content
+            # Second branch: bullet point (- or *) followed by space and content
+            match = re.match(r'^[\d]+(?:[\.\)]|\s?-)\s+(.+)$|^[\-\*]\s+(.+)$', line)
+            if match:
+                # Get the captured query (group 1 or 2, whichever matched)
+                query = (match.group(1) or match.group(2)).strip()
+                if query and len(query) > 5:  # Ignore very short lines
                     queries.append(query)
         
-        # Return up to 5 queries
+        # Return up to 5 queries, or fallback
         return queries[:5] if queries else ["research topic analysis"]
         
     except Exception as e:

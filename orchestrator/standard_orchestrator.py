@@ -141,28 +141,42 @@ def create_research_graph():
     
     # 2. Add deterministic edges (always taken)
     # Don't add edges from START; use set_entry_point() instead
+    
+    # PLANNER → RESEARCHERS (5-way fan-out for parallel execution)
+    # LangGraph automatically synchronizes multiple incoming edges to a single node
+    # so the verifier waits for all 5 researchers to complete before proceeding
     workflow.add_edge("planner", "researcher_1")
     workflow.add_edge("planner", "researcher_2")
     workflow.add_edge("planner", "researcher_3")
     workflow.add_edge("planner", "researcher_4")
     workflow.add_edge("planner", "researcher_5")
     
-    # Join after researchers
+    # RESEARCHERS → VERIFIER (convergence point)
+    # All 5 researchers feed into verifier, which synchronizes their output
+    # into a single ResearchState with merged sources list
     workflow.add_edge("researcher_1", "verifier")
     workflow.add_edge("researcher_2", "verifier")
     workflow.add_edge("researcher_3", "verifier")
     workflow.add_edge("researcher_4", "verifier")
     workflow.add_edge("researcher_5", "verifier")
     
-    # 3. Add CONDITIONAL edges (decision-based routing)
+    # 3. Add CONDITIONAL edges with multi-path routing
+    # These edges make intelligent decisions based on state metrics
     
-    # After VERIFIER: route based on source quality
+    # VERIFIER ROUTING: Quality-based fallback mechanism
+    # Routes to retry if sources are poor, or proceeds directly to detection
+    # This implements a feedback loop for source improvement
     def route_after_verifier(state: ResearchState) -> str:
         """
         Route after verification:
-        - If sources too poor quality, retry research
-        - If this is already a retry AND still poor, fail
-        - Otherwise proceed to detection
+        - source_quality_score < 0.3 and not yet retried → fallback search (researcher_retry)
+        - source_quality_score < 0.3 and already retried → accept and continue (detector)
+        - source_quality_score >= 0.3 → proceed directly (detector)
+        
+        Threshold explanation:
+        - 0.0-0.3: Poor quality - may lack credibility, freshness, or diversity
+        - 0.3-0.7: Acceptable quality - mixed credibility and freshness
+        - 0.7-1.0: High quality - credible, fresh, diverse sources
         """
         if state.source_quality_score < 0.3:
             if state.fallback_triggered:
@@ -189,11 +203,22 @@ def create_research_graph():
     # Continue deterministic chain
     workflow.add_edge("detector", "synthesizer")
     
-    # After SYNTHESIZER: check confidence level
+    # SYNTHESIZER ROUTING: Confidence-based refinement loop
+    # If confidence in synthesis is low, runs synthesizer_redo for improvement
+    # Otherwise proceeds to reviewer for fact-checking
     def route_after_synthesizer(state: ResearchState) -> str:
-        """Route based on synthesis confidence."""
+        """
+        Route based on synthesis confidence:
+        - synthesis_confidence < 0.5: Insufficient confidence, try different synthesis approach
+        - synthesis_confidence >= 0.5: Confident synthesis, proceed to review
+        
+        Confidence explanation:
+        - 0.0-0.3: Low confidence - contradictions, gaps, unresolved questions
+        - 0.3-0.7: Medium confidence - mostly coherent but some uncertainty
+        - 0.7-1.0: High confidence - well-supported, coherent argument
+        """
         if state.synthesis_confidence < 0.5:
-            logger.info(f"Synthesis confidence low ({state.synthesis_confidence}); redoing")
+            logger.info(f"Synthesis confidence low ({state.synthesis_confidence}); redoing with different approach")
             return "synthesizer_redo"
         return "reviewer"
     
@@ -208,9 +233,18 @@ def create_research_graph():
     
     workflow.add_edge("synthesizer_redo", "reviewer")
     
-    # After REVIEWER: check if revision needed
+    # REVIEWER ROUTING: Revision loop with attempt limit
+    # Allows up to max_revision_attempts to fix issues found during review
+    # After max attempts or if no revision needed, proceeds to formatting
     def route_after_reviewer(state: ResearchState) -> str:
-        """Route based on revision feedback."""
+        """
+        Route based on revision feedback:
+        - revision_needed=True AND attempt < max → goes back to synthesizer
+        - revision_needed=False OR attempt >= max → proceeds to formatter
+        
+        Attempt counter prevents infinite revision loops.
+        Max default: 2 revision attempts (synthesis → review → synthesis → review → formatter)
+        """
         if (
             state.revision_needed 
             and state.current_revision_attempt < state.max_revision_attempts
