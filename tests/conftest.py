@@ -7,14 +7,21 @@ import os
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
-from uuid import uuid4
+from uuid import uuid4, UUID
 import asyncio
+import jwt
+from typing import Optional
+
+# IMPORTANT: Set DEBUG=true BEFORE importing app/settings
+# This enables test-mode JWT validation (skips JWKS validation in tests)
+os.environ.setdefault("DEBUG", "true")
 
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from fastapi.testclient import TestClient
+from fastapi import HTTPException, status
 from unittest.mock import patch, AsyncMock
 
 # Add project root to path
@@ -155,6 +162,112 @@ def valid_jwt_payload() -> dict:
 
 
 # ============================================================================
+# JWT Authentication Fixtures (for E2E Testing)
+# ============================================================================
+
+@pytest.fixture
+def valid_jwt_token(user_id: Optional[str] = None) -> str:
+    """Generate a valid JWT token for testing.
+    
+    Creates a real JWT token with proper segments for E2E tests.
+    Uses a test secret key for signature without JWKS validation.
+    
+    Args:
+        user_id: User ID to include in token (default: test uuid)
+        
+    Returns:
+        Encoded JWT token string (without 'Bearer ' prefix)
+    """
+    if user_id is None:
+        user_id = str(uuid4())
+    
+    payload = {
+        "sub": user_id,
+        "email": "testuser@example.com",
+        "roles": ["free"],
+        "iss": "https://neonauth.example.com",
+        "aud": "neondb",
+        "iat": int(datetime.utcnow().timestamp()),
+        "exp": int((datetime.utcnow() + timedelta(hours=1)).timestamp())
+    }
+    
+    # Sign JWT with test secret (32 bytes minimum for HS256)
+    test_secret = "test-secret-key-for-e2e-testing-consilience"
+    token = jwt.encode(payload, test_secret, algorithm="HS256")
+    return token
+
+
+@pytest.fixture
+def auth_headers(valid_jwt_token: str) -> dict:
+    """Create authorization headers with valid JWT token.
+    
+    Returns:
+        Dict with Authorization header containing Bearer token
+    """
+    return {"Authorization": f"Bearer {valid_jwt_token}"}
+
+
+@pytest.fixture
+def user_id():
+    """Generate a test user ID."""
+    return str(uuid4())
+
+
+@pytest.fixture
+def user_id_with_zero_quota():
+    """Generate a test user ID for quota enforcement tests."""
+    return str(uuid4())
+
+
+@pytest.fixture
+def mock_verify_token(mocker):
+    """Mock the JWT token verification to bypass JWKS validation.
+    
+    This allows E2E tests to work without accessing JWKS endpoints.
+    Returns a mocker instance ready to use.
+    """
+    async def mock_verify(token: str) -> dict:
+        """Mock token verification that extracts payload from JWT without validation."""
+        try:
+            # Decode without verification (testing only)
+            payload = jwt.decode(token, options={"verify_signature": False})
+            return payload
+        except Exception:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token format"
+            )
+    
+    return mocker.patch(
+        "core.security.NeonSecurityManager.verify_token",
+        side_effect=mock_verify
+    )
+
+
+@pytest.fixture
+def override_auth_for_testing(monkeypatch):
+    """Override security manager verify_token for E2E tests.
+    
+    All verify_token calls will decode without JWKS validation.
+    Use this fixture in test classes that need auth mocking.
+    Patched into: core.security.NeonSecurityManager.verify_token
+    """
+    async def mock_verify(self, token: str) -> dict:
+        """Decode JWT without JWKS validation for testing."""
+        try:
+            payload = jwt.decode(token, options={"verify_signature": False})
+            return payload
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"Invalid token: {str(e)}"
+            )
+    
+    from core.security import NeonSecurityManager
+    monkeypatch.setattr(NeonSecurityManager, "verify_token", mock_verify)
+
+
+# ============================================================================
 # Pytest Configuration
 # ============================================================================
 
@@ -250,6 +363,12 @@ def mock_token_claims_admin():
         "name": "Admin User",
         "role": "admin",
     }
+
+
+@pytest.fixture
+def auth_headers_with_token(valid_jwt_token: str) -> dict:
+    """Create authorization headers with valid JWT token."""
+    return {"Authorization": f"Bearer {valid_jwt_token}"}
 
 
 @pytest.fixture

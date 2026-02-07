@@ -80,14 +80,49 @@ async def extract_token_usage(response) -> Dict[str, int]:
     """
     Extract token counts from LangChain ChatOpenAI response.
     
-    LangChain's ChatOpenAI wraps OpenRouter responses.
-    Token data is in: response.response_metadata.get("usage")
+    Handles OpenRouter/API token data with fallback mechanisms.
+    Token data sources (in priority order):
+    1. response.response_metadata.get("usage") - OpenRouter usage dict
+    2. response.usage_metadata - LangChain usage attribute
+    3. Estimate from content length if no metadata available
+    
+    Returns:
+        Dict with prompt_tokens, completion_tokens, total_tokens
     """
     
-    usage = response.response_metadata.get("usage", {})
+    # Try to get usage from response metadata (OpenRouter format)
+    if hasattr(response, "response_metadata"):
+        usage = response.response_metadata.get("usage", {})
+        if usage:
+            return {
+                "prompt_tokens": usage.get("prompt_tokens", 0),
+                "completion_tokens": usage.get("completion_tokens", 0),
+                "total_tokens": usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0),
+            }
     
+    # Fallback: Try LangChain usage_metadata attribute
+    if hasattr(response, "usage_metadata") and response.usage_metadata:
+        usage = response.usage_metadata
+        return {
+            "prompt_tokens": usage.get("prompt_tokens", 0),
+            "completion_tokens": usage.get("completion_tokens", 0),
+            "total_tokens": usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0),
+        }
+    
+    # Final fallback: Estimate from content length (~4 characters per token)
+    # This is approximate but better than 0 tokens
+    if hasattr(response, "content") and response.content:
+        output_tokens = max(1, len(str(response.content)) // 4)
+        return {
+            "prompt_tokens": 0,  # Can't estimate input tokens without context
+            "completion_tokens": output_tokens,
+            "total_tokens": output_tokens,
+        }
+    
+    # No token data available
+    logger.warning("No token usage metadata available in response; returning 0")
     return {
-        "prompt_tokens": usage.get("prompt_tokens", 0),
-        "completion_tokens": usage.get("completion_tokens", 0),
-        "total_tokens": usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0),
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
     }

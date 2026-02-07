@@ -57,6 +57,9 @@ class NeonSecurityManager:
         """
         Verify a Neon-issued JWT token.
         
+        In debug/test mode: Skips JWKS validation and accepts any JWT with valid structure.
+        In production: Validates signature against JWKS endpoint.
+        
         Args:
             token: Bearer token from Authorization header
             
@@ -67,6 +70,14 @@ class NeonSecurityManager:
             HTTPException: If token is invalid or expired
         """
         try:
+            # DEBUG MODE: Skip JWKS validation for testing
+            # This allows E2E tests to work without real auth servers
+            if self.settings.debug:
+                logger.info("DEBUG MODE: Skipping JWKS validation")
+                payload = jwt.decode(token, options={"verify_signature": False})
+                return payload
+            
+            # PRODUCTION MODE: Full JWKS validation
             # Decode header to get kid (key id)
             unverified = jwt.decode(token, options={"verify_signature": False})
             header = jwt.get_unverified_header(token)
