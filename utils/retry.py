@@ -5,7 +5,7 @@ Retry utilities with exponential backoff, jitter, and circuit breaker.
 import asyncio
 import logging
 import random
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Callable, TypeVar, Any, Optional
 from dataclasses import dataclass, field
 from functools import wraps
@@ -38,7 +38,7 @@ class CircuitBreaker:
     def record_failure(self):
         """Record a failure; open circuit if threshold exceeded."""
         self.failure_count += 1
-        self.last_failure_time = datetime.utcnow()
+        self.last_failure_time = datetime.now(timezone.utc)
         
         if self.failure_count >= self.failure_threshold:
             logger.warning(
@@ -59,7 +59,7 @@ class CircuitBreaker:
         
         # Check if enough time has passed to reset
         if self.last_failure_time:
-            elapsed = (datetime.utcnow() - self.last_failure_time).total_seconds()
+            elapsed = (datetime.now(timezone.utc) - self.last_failure_time).total_seconds()
             if elapsed > self.reset_timeout_seconds:
                 logger.info("Circuit breaker resetting.")
                 self.is_open = False

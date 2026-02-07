@@ -366,12 +366,6 @@ def mock_token_claims_admin():
 
 
 @pytest.fixture
-def auth_headers_with_token(valid_jwt_token: str) -> dict:
-    """Create authorization headers with valid JWT token."""
-    return {"Authorization": f"Bearer {valid_jwt_token}"}
-
-
-@pytest.fixture
 async def mock_orchestrator(mocker):
     """Mock orchestrator to return instant results."""
     

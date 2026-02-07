@@ -57,8 +57,8 @@ class NeonSecurityManager:
         """
         Verify a Neon-issued JWT token.
         
-        In debug/test mode: Skips JWKS validation and accepts any JWT with valid structure.
-        In production: Validates signature against JWKS endpoint.
+        SECURITY WARNING: Debug mode disables signature validation.
+        This should ONLY be used for testing. The DEBUG flag must ALWAYS be False in production.
         
         Args:
             token: Bearer token from Authorization header
@@ -70,10 +70,11 @@ class NeonSecurityManager:
             HTTPException: If token is invalid or expired
         """
         try:
-            # DEBUG MODE: Skip JWKS validation for testing
+            # DEBUG MODE: Skip JWKS validation only in testing
             # This allows E2E tests to work without real auth servers
+            # CRITICAL: DEBUG must be False in production (default is False)
             if self.settings.debug:
-                logger.info("DEBUG MODE: Skipping JWKS validation")
+                logger.warning("DEBUG MODE ACTIVE: Skipping JWKS validation (testing only)")
                 payload = jwt.decode(token, options={"verify_signature": False})
                 return payload
             

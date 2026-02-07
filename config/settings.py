@@ -6,7 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Consilience"
-    DEBUG: bool = True
+    DEBUG: bool = False  # SECURITY: Must be False in production; only True for testing
     # Neon/Postgres connection string
     DATABASE_URL: str | None = None
 
