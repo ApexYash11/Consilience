@@ -44,10 +44,42 @@ app.add_middleware(
 
 
 # Startup and shutdown events
+
+async def validate_production_config():
+    """Validate production configuration on startup.
+    
+    CRITICAL: DEBUG must not be enabled in production environments.
+    This handler runs before database initialization to fail fast.
+    """
+    if settings.environment.lower() == "production" and settings.debug:
+        error_msg = (
+            "SECURITY FAILURE: DEBUG mode is enabled in PRODUCTION environment!\n"
+            "Set DEBUG=false in .env file before deploying to production.\n"
+            "DEBUG mode disables JWT signature validation which is unacceptable in production.\n"
+            "Application startup aborted."
+        )
+        logger.critical(error_msg)
+        raise RuntimeError(error_msg)
+    
+    if settings.debug:
+        logger.warning(
+            f"DEBUG mode is ENABLED in {settings.environment.upper()} environment. "
+            "This disables JWT signature validation. Use only for development/testing."
+        )
+
+
 @app.on_event("startup")
 async def startup_event():
     """Initialize database and services on startup."""
     logger.info(f"{settings.app_name} API initializing...")
+    
+    # Validate production config first (fail fast)
+    try:
+        await validate_production_config()
+    except RuntimeError as e:
+        logger.error(f"Production configuration validation failed: {str(e)}")
+        raise
+    
     try:
         # Initialize async database
         await init_async_db()

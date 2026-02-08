@@ -214,24 +214,28 @@ jobs:
           pip install pylint black mypy flake8 bandit
 
       - name: Run Pylint
-        continue-on-error: true
         run: |
-          pylint api/ agents/ services/ models/ --disable=all --enable=E,F || true
+          pylint api/ agents/ services/ models/ --disable=all --enable=E,F
 
       - name: Check code style with Black
-        continue-on-error: true
         run: |
-          black --check api/ agents/ services/ models/ || true
+          black --check api/ agents/ services/ models/
 
       - name: Type check with mypy
-        continue-on-error: true
         run: |
-          mypy api/ agents/ services/ models/ --ignore-missing-imports || true
+          mypy api/ agents/ services/ models/ --ignore-missing-imports
 
       - name: Security check with Bandit
-        continue-on-error: true
         run: |
-          bandit -r api/ agents/ services/ models/ -f json -o bandit-report.json || true
+          bandit -r api/ agents/ services/ models/ -f json -o bandit-report.json
+
+      - name: Upload Bandit report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bandit-security-report
+          path: bandit-report.json
+          retention-days: 30
 
   dependency-check:
     name: Dependencies Check
@@ -248,9 +252,9 @@ jobs:
 
       - name: Check for known vulnerabilities
         run: |
-          python -m pip install --upgrade pip safety
+          python -m pip install --upgrade pip pip-audit
           pip install -e .
-          safety check || echo "Review security issues above"
+          pip-audit
 
       - name: Validate requirements
         run: |

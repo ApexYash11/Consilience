@@ -705,7 +705,6 @@ pytest tests/test_standard_research.py -v
 
 # Specific test class
 pytest tests/test_standard_research.py::TestResearchServiceCRUD -v
-````
 
 # Single test
 pytest tests/test_standard_research.py::TestResearchServiceCRUD::test_save_research_task -xvs

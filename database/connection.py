@@ -155,6 +155,6 @@ def init_db():
     Base.metadata.create_all(bind=_engine)
 
 
-async def close_db():
+async def close_db() -> None:
     """Close async database connections."""
     await async_engine.dispose()
