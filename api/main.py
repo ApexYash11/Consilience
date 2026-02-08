@@ -93,7 +93,7 @@ async def startup_event():
 async def shutdown_event():
     """Clean up on shutdown."""
     logger.info("Shutting down...")
-    close_db()
+    await close_db()
 
 
 # Health check endpoint

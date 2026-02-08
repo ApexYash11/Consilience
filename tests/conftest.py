@@ -15,6 +15,8 @@ from typing import Optional
 # IMPORTANT: Set DEBUG=true BEFORE importing app/settings
 # This enables test-mode JWT validation (skips JWKS validation in tests)
 os.environ.setdefault("DEBUG", "true")
+os.environ.setdefault("ENVIRONMENT", "test")
+os.environ.setdefault("PYTEST_CURRENT_TEST", "true")
 
 import pytest
 from sqlalchemy import create_engine
@@ -410,3 +412,10 @@ async def mock_orchestrator(mocker):
         "orchestrator.standard_orchestrator.run_research",
         side_effect=mock_run_research,
     )
+
+
+@pytest.fixture
+def auth_service(db_session):
+    """Create a NeonAuthService with a test database session."""
+    from services.neon_auth_service import NeonAuthService
+    return NeonAuthService(db=db_session)
