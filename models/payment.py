@@ -25,3 +25,15 @@ class SubscriptionPlan(BaseModel):
     name: str
     price_monthly_usd: Decimal
     features: List[str]
+
+
+class StripeCheckoutSessionCreate(BaseModel):
+    """Request to create a Stripe checkout session."""
+    user_id: str
+    tier: SubscriptionTier
+
+
+class StripeCheckoutSessionResponse(BaseModel):
+    """Response from Stripe checkout creation."""
+    checkout_url: str
+    session_id: str

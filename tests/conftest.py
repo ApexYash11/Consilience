@@ -15,6 +15,8 @@ from typing import Optional
 # IMPORTANT: Set DEBUG=true BEFORE importing app/settings
 # This enables test-mode JWT validation (skips JWKS validation in tests)
 os.environ.setdefault("DEBUG", "true")
+os.environ.setdefault("ENVIRONMENT", "test")
+os.environ.setdefault("PYTEST_CURRENT_TEST", "true")
 
 import pytest
 from sqlalchemy import create_engine
@@ -108,6 +110,31 @@ async def async_db_session(async_test_db_engine):
 def client():
     """Create a FastAPI TestClient for integration tests."""
     return TestClient(app)
+
+
+@pytest.fixture
+def client_with_db(async_db_session):
+    """Create a FastAPI TestClient with mocked database session.
+    
+    Overrides get_async_session dependency to use in-memory test database.
+    Use this fixture for tests that need database connectivity without
+    connecting to real Neon database.
+    
+    Returns:
+        TestClient with dependencies overridden
+    """
+    async def override_get_async_session():
+        yield async_db_session
+    
+    # Override the actual get_async_session from database.connection
+    from database.connection import get_async_session
+    app.dependency_overrides[get_async_session] = override_get_async_session
+    client = TestClient(app)
+    
+    yield client
+    
+    # Clean up dependency overrides
+    app.dependency_overrides.clear()
 
 
 # ============================================================================
@@ -385,3 +412,10 @@ async def mock_orchestrator(mocker):
         "orchestrator.standard_orchestrator.run_research",
         side_effect=mock_run_research,
     )
+
+
+@pytest.fixture
+def auth_service(db_session):
+    """Create a NeonAuthService with a test database session."""
+    from services.neon_auth_service import NeonAuthService
+    return NeonAuthService(db=db_session)
