@@ -110,6 +110,31 @@ def client():
     return TestClient(app)
 
 
+@pytest.fixture
+def client_with_db(async_db_session):
+    """Create a FastAPI TestClient with mocked database session.
+    
+    Overrides get_async_session dependency to use in-memory test database.
+    Use this fixture for tests that need database connectivity without
+    connecting to real Neon database.
+    
+    Returns:
+        TestClient with dependencies overridden
+    """
+    async def override_get_async_session():
+        yield async_db_session
+    
+    # Override the actual get_async_session from database.connection
+    from database.connection import get_async_session
+    app.dependency_overrides[get_async_session] = override_get_async_session
+    client = TestClient(app)
+    
+    yield client
+    
+    # Clean up dependency overrides
+    app.dependency_overrides.clear()
+
+
 # ============================================================================
 # Authentication Fixtures
 # ============================================================================

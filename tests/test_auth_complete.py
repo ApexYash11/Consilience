@@ -68,13 +68,12 @@ def expired_jwt_token():
     return token, payload
 
 
-# ============================================================================
 # Health Check Tests
 # ============================================================================
 
-def test_health_check():
+def test_health_check(client_with_db):
     """Test health check endpoint without auth."""
-    response = client.get("/health")
+    response = client_with_db.get("/health")
     assert response.status_code == 200
     assert response.json()["status"] == "healthy"
     assert response.json()["authenticated"] is False
@@ -259,9 +258,14 @@ def test_extract_user_info_missing_email():
 # Tier-Based Access Control Tests
 # ============================================================================
 
+# ============================================================================
+# Tier-Based Access Control Tests
+# ============================================================================
+
+@pytest.mark.asyncio
 @patch("api.dependencies.get_async_session")
 @patch("api.dependencies.get_current_user")
-def test_free_user_cannot_access_paid_endpoint(mock_current_user, mock_db):
+async def test_free_user_cannot_access_paid_endpoint(mock_current_user, mock_db):
     """Test that free users are blocked from paid endpoints."""
     from models.user import CurrentUser
     
@@ -272,13 +276,13 @@ def test_free_user_cannot_access_paid_endpoint(mock_current_user, mock_db):
         roles=["free"]
     )
     
-    # This would be a protected endpoint (not implemented yet in main.py)
-    # For now, test the dependency logic
+    # Test the dependency logic
     from api.dependencies import require_paid_tier
     from fastapi import HTTPException
     
     with pytest.raises(HTTPException) as exc_info:
-        require_paid_tier(user)  # type: ignore
+        # Call with free user - should raise 403
+        await require_paid_tier(user)
     
     assert exc_info.value.status_code == 403
     assert "paid subscription" in exc_info.value.detail
