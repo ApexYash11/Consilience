@@ -6,6 +6,7 @@ Tests the complete journey from login through protected endpoint access.
 import pytest
 from datetime import datetime, timedelta
 import jwt
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from unittest.mock import patch, AsyncMock
 
@@ -70,15 +71,13 @@ class TestCompleteAuthFlow:
         from core.security import NeonSecurityManager
         import asyncio
         
-        headers = {"Authorization": f"Bearer {valid_jwt_token}"}
-        
         # Test token verification with protected endpoint context
         manager = NeonSecurityManager()
         payload = asyncio.run(manager.verify_token(valid_jwt_token))
         
         # Verify user context is extracted from token
-        assert payload["sub"] is not None
-        assert payload["email"] is not None
+        assert payload.get("sub"), "Token must contain 'sub' claim"
+        assert payload.get("email"), "Token must contain 'email' claim"
         print("✓ Step 3: Protected endpoint accessible with valid token")
 
     def test_flow_4_user_cannot_access_protected_endpoint_without_token(self, e2e_client):
@@ -356,10 +355,11 @@ class TestDatabasePersistence:
         result = await async_db_session.execute(
             text("SELECT COUNT(*) FROM information_schema.tables WHERE table_name='usage_logs'")
         )
-        table_exists = result.scalar() > 0 if result.scalar() is not None else False
+        count = result.scalar()
+        table_exists = count > 0 if count is not None else False
         
         # Activity logging infrastructure exists (table created in schema)
-        assert result.scalar() is not None
+        assert table_exists or count is not None
         pytest.skip("Activity logging implementation not yet complete")
 
     @pytest.mark.asyncio

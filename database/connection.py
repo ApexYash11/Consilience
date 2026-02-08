@@ -16,8 +16,8 @@ load_dotenv()
 # Environment detection
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development").lower()
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
-IS_TEST = os.getenv("PYTEST_CURRENT_TEST") is not None or DEBUG
-REQUIRE_SSL = ENVIRONMENT == "production" and not IS_TEST
+IS_TEST = os.getenv("PYTEST_CURRENT_TEST") is not None
+REQUIRE_SSL = ENVIRONMENT == "production"
 
 # Get database URL and convert to async driver if needed
 DATABASE_URL: str = os.getenv("DATABASE_URL") or "sqlite:///./consilience.db"

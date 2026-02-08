@@ -37,4 +37,3 @@ class StripeCheckoutSessionResponse(BaseModel):
     """Response from Stripe checkout creation."""
     checkout_url: str
     session_id: str
-    session_id: str

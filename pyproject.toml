@@ -17,7 +17,6 @@ dependencies = [
     "langgraph>=0.0.15",
     "anthropic>=0.12.0",
     "openai>=1.12.0",
-    "sqlalchemy>=2.0.0",
     "psycopg2-binary>=2.9.0",
     "stripe>=5.0.0",
     "bcrypt>=4.0.0",
