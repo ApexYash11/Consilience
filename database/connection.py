@@ -146,36 +146,48 @@ async def init_async_db():
     if not url_str:
         raise ValueError("DATABASE_URL environment variable is not set")
     
-    # Parse PostgreSQL URL with proper host:port separation
-    match = re.match(r'postgresql[+\w]*://([^:]+):([^@]+)@([^:/]+)(?::([0-9]+))?/(\w+)', url_str)
-    if match:
-        user, password, host, port_str, database = match.groups()
-        port = int(port_str) if port_str else 5432
+    # Parse PostgreSQL URL using SQLAlchemy's make_url()
+    # This robustly handles database names with hyphens, query parameters, and all edge cases
+    try:
+        url_obj = make_url(url_str)
+        user = url_obj.username
+        password = url_obj.password
+        host = url_obj.host
+        port = url_obj.port or 5432
+        database = url_obj.database
         
-        # Test raw asyncpg connection (verify DB is reachable)
-        # Only use SSL in production, not in test environments
-        ssl_mode = 'require' if REQUIRE_SSL else None
-        
-        try:
-            conn = await asyncpg.connect(
-                host=host,
-                port=port,
-                user=user,
-                password=password,
-                database=database,
-                ssl=ssl_mode,
-                timeout=10
-            )
-            await conn.close()
-        except Exception as e:
-            # In test/debug mode, don't fail hard on connection errors
-            if not (DEBUG or IS_TEST):
-                raise
-            # Log but continue in test mode
-            import logging
-            logging.warning(f"Database connection warning (test mode): {str(e)}")
-    else:
-        raise ValueError(f"Invalid DATABASE_URL format: {url_str}")
+        if user and password and host and database:
+            # Test raw asyncpg connection (verify DB is reachable)
+            # Only use SSL in production, not in test environments
+            ssl_mode = 'require' if REQUIRE_SSL else None
+            
+            try:
+                conn = await asyncpg.connect(
+                    host=host,
+                    port=port,
+                    user=user,
+                    password=password,
+                    database=database,
+                    ssl=ssl_mode,
+                    timeout=10
+                )
+                await conn.close()
+            except Exception as e:
+                # In test/debug mode, don't fail hard on connection errors
+                if not (DEBUG or IS_TEST):
+                    raise
+                # Log but continue in test mode
+                import logging
+                logging.warning(f"Database connection warning (test mode): {str(e)}")
+        else:
+            raise ValueError(f"Invalid DATABASE_URL format (missing credentials): {url_str}")
+    except ValueError as ve:
+        # make_url() parsing failed
+        if not (DEBUG or IS_TEST):
+            raise ValueError(f"Invalid DATABASE_URL format: {url_str}") from ve
+        # Log but continue in test mode
+        import logging
+        logging.warning(f"DATABASE_URL parsing warning (test mode): {str(ve)}")
 
 
 def init_db():
