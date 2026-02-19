@@ -146,9 +146,11 @@ async def init_async_db():
     if not url_str:
         raise ValueError("DATABASE_URL environment variable is not set")
     
-    match = re.match(r'postgresql[+\w]*://([^:]+):([^@]+)@([^/]+)/(\w+)', url_str)
+    # Parse PostgreSQL URL with proper host:port separation
+    match = re.match(r'postgresql[+\w]*://([^:]+):([^@]+)@([^:/]+)(?::([0-9]+))?/(\w+)', url_str)
     if match:
-        user, password, host, database = match.groups()
+        user, password, host, port_str, database = match.groups()
+        port = int(port_str) if port_str else 5432
         
         # Test raw asyncpg connection (verify DB is reachable)
         # Only use SSL in production, not in test environments
@@ -157,7 +159,7 @@ async def init_async_db():
         try:
             conn = await asyncpg.connect(
                 host=host,
-                port=5432,
+                port=port,
                 user=user,
                 password=password,
                 database=database,
