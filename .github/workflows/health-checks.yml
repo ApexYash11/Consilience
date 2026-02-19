@@ -18,21 +18,6 @@ jobs:
   health-check:
     name: Database & API Health Checks
     runs-on: ubuntu-latest
-    
-    services:
-      postgres:
-        image: postgres:14
-        env:
-          POSTGRES_USER: test_user
-          POSTGRES_PASSWORD: test_password
-          POSTGRES_DB: consilience_test
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
 
     steps:
       - name: Checkout code
@@ -48,7 +33,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e .
-          pip install pytest pytest-asyncio httpx
+          pip install pytest pytest-asyncio pytest-cov pytest-mock httpx
 
       - name: Create test .env file
         run: |
@@ -141,21 +126,6 @@ jobs:
   test-suite:
     name: Core Test Suite
     runs-on: ubuntu-latest
-    
-    services:
-      postgres:
-        image: postgres:14
-        env:
-          POSTGRES_USER: test_user
-          POSTGRES_PASSWORD: test_password
-          POSTGRES_DB: consilience_test
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
 
     steps:
       - name: Checkout code
@@ -171,13 +141,14 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e .
-          pip install pytest pytest-asyncio pytest-mock pytest-cov
+          pip install pytest pytest-asyncio pytest-cov pytest-mock
 
       - name: Create test .env file
         run: |
           cat > .env << EOF
           DEBUG=true
-          DATABASE_URL=postgresql://test_user:test_password@localhost:5432/consilience_test
+          ENVIRONMENT=test
+          DATABASE_URL=sqlite:///./consilience_test.db
           AUTH_URL=https://neon.example.com/auth
           JWKS_URL=https://neon.example.com/.well-known/jwks.json
           OPENROUTER_API_KEY=test-key
