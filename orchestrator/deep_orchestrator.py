@@ -197,13 +197,13 @@ def create_deep_research_graph():
         "verifier",
         route_after_verifier,
         {
-            "researcher_retry": "deep_researcher",
+            "researcher_retry": "researcher_retry",
             "detector": "detector",
         }
     )
     
-    # Researcher retry routes back to verifier
-    workflow.add_edge("researcher_retry", "verifier")
+    # Researcher retry routes back to deep researcher for another attempt
+    workflow.add_edge("researcher_retry", "deep_researcher")
     
     # Detector -> Synthesizer
     workflow.add_edge("detector", "synthesizer")

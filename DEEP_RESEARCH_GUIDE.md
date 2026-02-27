@@ -115,8 +115,8 @@ Platform Cost:    $200   (base infrastructure)
 ────────────────────
 Total Monthly:    $300
 ────────────────────
-Revenue:          $300   (10 users × $30/month)
-Profit Margin:    $0     (break-even at 10 users)
+Revenue:          $290   (10 users × $29/month)
+Profit Margin:    $(10)  (slight loss at 10 users; break-even at ~12 users)
 ```
 
 ---
@@ -380,7 +380,8 @@ Deep research endpoint requires:
 Users upgrade via:
 - Stripe Checkout flow
 - Monthly subscription: $29/month
-- Includes unlimited deep research tasks
+- Includes up to 2–3 deep research tasks per month
+- Additional tasks: $10 per task (overage pricing)
 
 ---
 
@@ -388,17 +389,17 @@ Users upgrade via:
 
 ### Execution Time Breakdown (typical)
 ```
-Planner:         2 sec   (2%)
-Sub-agents (R1): 35 sec  (6%)
-Sub-agents (R2): 25 sec  (4%)
-Sub-agents (R3): 15 sec  (3%)
-Verifier:        30 sec  (5%)
-Detector:        20 sec  (3%)
-Synthesizer:     60 sec  (10%)
-Reviewer:        200 sec (35%)
-Formatter:       30 sec  (5%)
+Planner:         2 sec   (0.5%)
+Sub-agents (R1): 35 sec  (8%)
+Sub-agents (R2): 25 sec  (6%)
+Sub-agents (R3): 15 sec  (4%)
+Verifier:        30 sec  (7%)
+Detector:        20 sec  (5%)
+Synthesizer:     60 sec  (14%)
+Reviewer:        200 sec (48%)
+Formatter:       30 sec  (7%)
 ────────────────────────
-Total:           575 sec (9.6 min)
+Total:           417 sec (6.95 min)
 ```
 
 ### Token Usage Breakdown (typical)

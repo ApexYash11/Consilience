@@ -417,9 +417,19 @@ Return ONLY the JSON array, no other text."""
         
         # Parse response
         try:
-            content = response.content            # Ensure content is a string (Langchain can return list)
+            content = response.content
+            # Ensure content is a string (Langchain can return list)
             if isinstance(content, list):
-                content = str(content)            # Extract JSON from response
+                # Concatenate list items - each item could be TextBlock, dict, or string
+                parts = []
+                for item in content:
+                    if hasattr(item, 'text'):
+                        parts.append(getattr(item, 'text'))
+                    elif isinstance(item, dict):
+                        parts.append(json.dumps(item))
+                    else:
+                        parts.append(str(item))
+                content = "".join(parts)
             json_start = content.find("[")
             json_end = content.rfind("]") + 1
             if json_start >= 0 and json_end > json_start:
@@ -547,7 +557,16 @@ Return ONLY the JSON array."""
         content = response.content
         # Ensure content is a string (Langchain can return list)
         if isinstance(content, list):
-            content = str(content)
+            # Concatenate list items - each item could be TextBlock, dict, or string
+            parts = []
+            for item in content:
+                if hasattr(item, 'text'):
+                    parts.append(getattr(item, 'text'))
+                elif isinstance(item, dict):
+                    parts.append(json.dumps(item))
+                else:
+                    parts.append(str(item))
+            content = "".join(parts)
         json_start = content.find("[")
         json_end = content.rfind("]") + 1
         if json_start >= 0 and json_end > json_start:
@@ -593,7 +612,16 @@ Return ONLY the JSON array."""
         content = response.content
         # Ensure content is a string (Langchain can return list)
         if isinstance(content, list):
-            content = str(content)
+            # Concatenate list items - each item could be TextBlock, dict, or string
+            parts = []
+            for item in content:
+                if hasattr(item, 'text'):
+                    parts.append(getattr(item, 'text'))
+                elif isinstance(item, dict):
+                    parts.append(json.dumps(item))
+                else:
+                    parts.append(str(item))
+            content = "".join(parts)
         json_start = content.find("[")
         json_end = content.rfind("]") + 1
         if json_start >= 0 and json_end > json_start:

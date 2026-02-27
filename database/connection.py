@@ -176,18 +176,22 @@ async def init_async_db():
                 # In test/debug mode, don't fail hard on connection errors
                 if not (DEBUG or IS_TEST):
                     raise
-                # Log but continue in test mode
+                # Log but continue in test mode (include URL only in debug logs)
                 import logging
                 logging.warning(f"Database connection warning (test mode): {str(e)}")
         else:
-            raise ValueError(f"Invalid DATABASE_URL format (missing credentials): {url_str}")
+            # SECURITY: Don't expose DATABASE_URL in error messages
+            if DEBUG or IS_TEST:
+                raise ValueError(f"Invalid DATABASE_URL format (missing credentials): {url_str}")
+            else:
+                raise ValueError("Invalid DATABASE_URL format (missing required credentials)")
     except ValueError as ve:
         # make_url() parsing failed
-        if not (DEBUG or IS_TEST):
+        # SECURITY: Only include URL in debug/test mode to prevent credential leakage
+        if DEBUG or IS_TEST:
             raise ValueError(f"Invalid DATABASE_URL format: {url_str}") from ve
-        # Log but continue in test mode
-        import logging
-        logging.warning(f"DATABASE_URL parsing warning (test mode): {str(ve)}")
+        else:
+            raise ValueError("Invalid DATABASE_URL format") from ve
 
 
 def init_db():
