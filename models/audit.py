@@ -1,4 +1,5 @@
 """Audit models."""
+
 from pydantic import BaseModel
 from datetime import datetime
 from typing import Dict, Any

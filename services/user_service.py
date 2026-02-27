@@ -1,4 +1,5 @@
 """User service skeleton."""
+
 from typing import Any
 
 

@@ -1,4 +1,5 @@
 """Payment routes for subscriptions and billing."""
+
 from fastapi import APIRouter, Depends, HTTPException
 from models.payment import StripeCheckoutSessionCreate, StripeCheckoutSessionResponse
 from services.payment_service import PaymentService
@@ -13,7 +14,9 @@ async def get_plans(service: PaymentService = Depends()):
 
 
 @router.post("/checkout", response_model=StripeCheckoutSessionResponse)
-async def create_checkout(request: StripeCheckoutSessionCreate, service: PaymentService = Depends()):
+async def create_checkout(
+    request: StripeCheckoutSessionCreate, service: PaymentService = Depends()
+):
     """Create a Stripe checkout session for subscription."""
     return service.create_checkout_session(request)
 

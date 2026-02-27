@@ -444,10 +444,10 @@ OVERALL:                        █████████████░░░
    - Prepare release checklist and stakeholder signoff
 
 ### Next Week (Medium Priority)
-4. **Start Phase 4 Development** (if resources available)
-   - Begin with LangChain Deep Agents framework
-   - Implement file system context tools
-   - Set up comprehensive test infrastructure
+4. **Validate Phase 4 in Staging** ✅ Deep research is implemented
+   - Deploy staging environment with deep research enabled
+   - Run integration tests for deep research endpoints
+   - Validate cost estimates against real OpenRouter usage
 
 5. **Improve Documentation**
    - Auto-generate OpenAPI/Swagger docs
@@ -564,14 +564,14 @@ Consilience/
 
 ## 📞 Questions & Next Steps
 
-1. **Should we release Phase 3 as an MVP or wait for Phase 4?**
-   → Recommend MVP release; Phase 4 can be premium later
+1. **Should we release Phase 3 + Phase 4 as MVP?**
+   → Phase 4 (deep research) is implemented; bundle both for premium tier launch
 
 2. **What's the timeline priority?**
    → Depends on go-to-market strategy
 
-3. **Should we start Phase 4 development now?**
-   → Recommend after staging validation (1-2 weeks)
+3. **When should we activate deep research for users?**
+   → After staging validation + E2E test fixes pass CI
 
 4. **Payment integration - critical for launch?**
    → Can launch free tier first, add payments later

@@ -282,7 +282,9 @@ async def write_todos(
         # Write both formats
         result = await write_file(task_id, "todos.md", "".join(todo_lines))
         if result["success"]:
-            await write_file(task_id, "todos.json", json_content)
+            json_result = await write_file(task_id, "todos.json", json_content)
+            if not json_result["success"]:
+                return json_result
         
         return result
     except Exception as e:

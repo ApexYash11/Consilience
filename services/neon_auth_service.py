@@ -41,10 +41,10 @@ class NeonAuthService:
         self.db = db
         self._jwks_cache = None
         self._cache_time = None
-    
+
     def _get_tier_value(self, tier) -> str:
         """Extract the string value from a SubscriptionTier enum."""
-        if hasattr(tier, 'value'):
+        if hasattr(tier, "value"):
             return str(tier.value)
         return str(tier)
 
@@ -135,7 +135,11 @@ class NeonAuthService:
                 email=str(user.email),
                 full_name=str(getattr(user, "full_name", "") or ""),
                 subscription_tier=self._get_tier_value(user.subscription_tier),
-                created_at=user.created_at if isinstance(user.created_at, datetime) else datetime.utcnow(),
+                created_at=(
+                    user.created_at
+                    if isinstance(user.created_at, datetime)
+                    else datetime.utcnow()
+                ),
             )
 
         user = User(
@@ -156,10 +160,16 @@ class NeonAuthService:
             email=str(user.email),
             full_name=str(getattr(user, "full_name", "") or ""),
             subscription_tier=self._get_tier_value(user.subscription_tier),
-            created_at=user.created_at if isinstance(user.created_at, datetime) else datetime.utcnow(),
+            created_at=(
+                user.created_at
+                if isinstance(user.created_at, datetime)
+                else datetime.utcnow()
+            ),
         )
 
-    def enforce_tier_access(self, user: UserResponse, required_tier: str = "pro") -> bool:
+    def enforce_tier_access(
+        self, user: UserResponse, required_tier: str = "pro"
+    ) -> bool:
         if required_tier == "pro":
             if user.subscription_tier != "pro":
                 raise Exception("User must upgrade to pro tier to access this resource")
@@ -174,7 +184,11 @@ class NeonAuthService:
             email=str(user.email),
             full_name=str(getattr(user, "full_name", "") or ""),
             subscription_tier=self._get_tier_value(user.subscription_tier),
-            created_at=user.created_at if isinstance(user.created_at, datetime) else datetime.utcnow(),
+            created_at=(
+                user.created_at
+                if isinstance(user.created_at, datetime)
+                else datetime.utcnow()
+            ),
         )
 
     def get_user_by_id(self, user_id: str) -> Optional[UserResponse]:
@@ -186,5 +200,9 @@ class NeonAuthService:
             email=str(user.email),
             full_name=str(getattr(user, "full_name", "") or ""),
             subscription_tier=self._get_tier_value(user.subscription_tier),
-            created_at=user.created_at if isinstance(user.created_at, datetime) else datetime.utcnow(),
+            created_at=(
+                user.created_at
+                if isinstance(user.created_at, datetime)
+                else datetime.utcnow()
+            ),
         )

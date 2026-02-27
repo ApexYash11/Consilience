@@ -21,7 +21,9 @@ def synthesizer_node(state: ResearchState) -> ResearchState:
         sources = state.verified_sources or []
         if not sources:
             logger.warning("Synthesizer received no verified sources")
-            state.draft_paper = f"# {state.topic}\n\nNo verified sources available for synthesis."
+            state.draft_paper = (
+                f"# {state.topic}\n\nNo verified sources available for synthesis."
+            )
             return state
 
         model = get_model_for_phase(
@@ -53,12 +55,14 @@ def synthesizer_node(state: ResearchState) -> ResearchState:
             paper += f"## {idx}. {section_title}\n\n{content}\n\n"
             # Accumulate tokens and cost for this section
             try:
-                state.tokens_used = (state.tokens_used or 0) + int(section_cost.get("total_tokens", 0))
+                state.tokens_used = (state.tokens_used or 0) + int(
+                    section_cost.get("total_tokens", 0)
+                )
                 state.cost = (state.cost or 0.0) + float(section_cost.get("cost", 0.0))
             except Exception:
                 # TODO: Improve fallback estimation for synthesizer section cost
                 state.tokens_used = (state.tokens_used or 0) + 0
-                state.cost = (state.cost or 0.0)
+                state.cost = state.cost or 0.0
 
         bibliography = _generate_bibliography(sources)
         paper += f"## References\n\n{bibliography}\n"
@@ -66,12 +70,14 @@ def synthesizer_node(state: ResearchState) -> ResearchState:
         state.draft_paper = paper
         # Accumulate tokens/cost from outline phase
         try:
-            state.tokens_used = (state.tokens_used or 0) + int(outline_cost.get("total_tokens", 0))
+            state.tokens_used = (state.tokens_used or 0) + int(
+                outline_cost.get("total_tokens", 0)
+            )
             state.cost = (state.cost or 0.0) + float(outline_cost.get("cost", 0.0))
         except Exception:
             # TODO: If cost estimation is deferred, consider a conservative token estimate here
             state.tokens_used = (state.tokens_used or 0) + 0
-            state.cost = (state.cost or 0.0)
+            state.cost = state.cost or 0.0
 
         logger.info("Draft paper synthesized from verified sources")
         return state
@@ -82,18 +88,26 @@ def synthesizer_node(state: ResearchState) -> ResearchState:
         raise ValueError(f"Synthesis failed: {str(exc)}") from exc
 
 
-def _create_outline(topic: str, sources: List[Source], llm: ChatOpenAI, model: str) -> Tuple[List[str], Dict[str, Any]]:
+def _create_outline(
+    topic: str, sources: List[Source], llm: ChatOpenAI, model: str
+) -> Tuple[List[str], Dict[str, Any]]:
     """Generate a paper outline structure."""
     prompt = f"""Create a 7-section research paper outline for: {topic}
 
 Based on {len(sources)} academic sources.
 
 Return only the section titles, one per line:"""
-    
+
     response = llm.invoke(prompt)
-    text = response.content if isinstance(response.content, str) else str(response.content)
-    sections = [stripped for line in text.split('\n') if (stripped := line.strip()) and not stripped[0].isdigit()]
-    
+    text = (
+        response.content if isinstance(response.content, str) else str(response.content)
+    )
+    sections = [
+        stripped
+        for line in text.split("\n")
+        if (stripped := line.strip()) and not stripped[0].isdigit()
+    ]
+
     # Estimate cost for outline generation
     try:
         cost_info = estimate_cost_from_response(response, model)
@@ -123,8 +137,10 @@ def _write_section(
     model: str,
 ) -> Tuple[str, Dict[str, Any]]:
     """Generate content for a single section."""
-    is_debate_section = "debate" in section_title.lower() or "conflict" in section_title.lower()
-    
+    is_debate_section = (
+        "debate" in section_title.lower() or "conflict" in section_title.lower()
+    )
+
     if is_debate_section and contradictions:
         contradiction_summary = "\n".join(
             [f"- {c.severity.upper()}: {c.description}" for c in contradictions[:5]]
@@ -143,9 +159,11 @@ Use these sources:
 {source_refs}
 
 Make it 300-500 words, academic tone."""
-    
+
     response = llm.invoke(prompt)
-    content = response.content if isinstance(response.content, str) else str(response.content)
+    content = (
+        response.content if isinstance(response.content, str) else str(response.content)
+    )
     try:
         cost_info = estimate_cost_from_response(response, model)
     except Exception:

@@ -45,7 +45,11 @@ def formatter_node(state: ResearchState) -> ResearchState:
                 paper_text, rev_prompt_tokens, rev_completion_tokens = revised_result
             else:
                 # Fallback
-                paper_text = revised_result[0] if isinstance(revised_result, tuple) else revised_result
+                paper_text = (
+                    revised_result[0]
+                    if isinstance(revised_result, tuple)
+                    else revised_result
+                )
                 rev_prompt_tokens = 0
                 rev_completion_tokens = 0
 
@@ -53,7 +57,9 @@ def formatter_node(state: ResearchState) -> ResearchState:
             try:
                 price_map = get_model_pricing(model)
                 cost_per_token_input = (price_map.get("input", 0.0) or 0.0) / 1_000_000
-                cost_per_token_output = (price_map.get("output", 0.0) or 0.0) / 1_000_000
+                cost_per_token_output = (
+                    price_map.get("output", 0.0) or 0.0
+                ) / 1_000_000
                 rev_input_cost = (rev_prompt_tokens or 0) * cost_per_token_input
                 rev_output_cost = (rev_completion_tokens or 0) * cost_per_token_output
                 state.cost = (state.cost or 0.0) + rev_input_cost + rev_output_cost
@@ -62,7 +68,11 @@ def formatter_node(state: ResearchState) -> ResearchState:
 
             # Safely coerce and add revision tokens
             try:
-                state.tokens_used = (state.tokens_used or 0) + int(rev_prompt_tokens or 0) + int(rev_completion_tokens or 0)
+                state.tokens_used = (
+                    (state.tokens_used or 0)
+                    + int(rev_prompt_tokens or 0)
+                    + int(rev_completion_tokens or 0)
+                )
             except Exception:
                 pass
 
@@ -91,7 +101,11 @@ Return only the formatted paper."""
 
     try:
         response = llm.invoke(prompt)
-        formatted = response.content if isinstance(response.content, str) else str(response.content)
+        formatted = (
+            response.content
+            if isinstance(response.content, str)
+            else str(response.content)
+        )
 
         state.final_paper = formatted
         state.status = TaskStatus.COMPLETED
@@ -128,30 +142,54 @@ Return only the formatted paper."""
             usage = getattr(response, "usage", None)
             if usage is not None:
                 if isinstance(usage, dict):
-                    prompt_tokens = usage.get("prompt_tokens") or usage.get("input_tokens")
-                    completion_tokens = usage.get("completion_tokens") or usage.get("output_tokens")
+                    prompt_tokens = usage.get("prompt_tokens") or usage.get(
+                        "input_tokens"
+                    )
+                    completion_tokens = usage.get("completion_tokens") or usage.get(
+                        "output_tokens"
+                    )
                 else:
-                    prompt_tokens = getattr(usage, "input_tokens", None) or getattr(usage, "prompt_tokens", None)
-                    completion_tokens = getattr(usage, "output_tokens", None) or getattr(usage, "completion_tokens", None)
+                    prompt_tokens = getattr(usage, "input_tokens", None) or getattr(
+                        usage, "prompt_tokens", None
+                    )
+                    completion_tokens = getattr(
+                        usage, "output_tokens", None
+                    ) or getattr(usage, "completion_tokens", None)
 
-            if (prompt_tokens is None or completion_tokens is None) and hasattr(response, "meta"):
+            if (prompt_tokens is None or completion_tokens is None) and hasattr(
+                response, "meta"
+            ):
                 meta = getattr(response, "meta")
                 if isinstance(meta, dict):
-                    prompt_tokens = prompt_tokens or meta.get("prompt_tokens") or meta.get("input_tokens")
-                    completion_tokens = completion_tokens or meta.get("completion_tokens") or meta.get("output_tokens")
+                    prompt_tokens = (
+                        prompt_tokens
+                        or meta.get("prompt_tokens")
+                        or meta.get("input_tokens")
+                    )
+                    completion_tokens = (
+                        completion_tokens
+                        or meta.get("completion_tokens")
+                        or meta.get("output_tokens")
+                    )
         except Exception:
             prompt_tokens = prompt_tokens or None
             completion_tokens = completion_tokens or None
 
         # Fallback to conservative split if missing
         if prompt_tokens is None or completion_tokens is None:
-            total_estimate = (base_estimate + revise_estimate) if tokens is None else int(tokens)
+            total_estimate = (
+                (base_estimate + revise_estimate) if tokens is None else int(tokens)
+            )
             # assume 30% input, 70% output
             prompt_tokens = int(total_estimate * 0.3)
             completion_tokens = max(0, int(total_estimate - prompt_tokens))
 
         # Add revision tokens if they were returned earlier (already added to tokens_used above)
-        state.tokens_used = (state.tokens_used or 0) + int(prompt_tokens or 0) + int(completion_tokens or 0)
+        state.tokens_used = (
+            (state.tokens_used or 0)
+            + int(prompt_tokens or 0)
+            + int(completion_tokens or 0)
+        )
 
         # Compute cost using separate input/output pricing
         try:
@@ -164,20 +202,24 @@ Return only the formatted paper."""
 
             state.cost = (state.cost or 0.0) + input_cost + output_cost
         except Exception:
-            state.cost = (state.cost or 0.0)
+            state.cost = state.cost or 0.0
     except Exception as exc:
         logger.exception("Formatter LLM invoke failed")
         # Mark task failed and return a safe, non-sensitive message
         state.status = TaskStatus.FAILED
         err_id = uuid.uuid4().hex[:8]
-        state.final_paper = f"Formatting failed due to an internal error (ERR-{err_id})."
+        state.final_paper = (
+            f"Formatting failed due to an internal error (ERR-{err_id})."
+        )
         return state
 
     logger.info("Formatter completed final formatting")
     return state
 
 
-def _revise_paper(llm: ChatOpenAI, paper: str, issues: List[str]) -> Tuple[str, int, int]:
+def _revise_paper(
+    llm: ChatOpenAI, paper: str, issues: List[str]
+) -> Tuple[str, int, int]:
     """Revise paper to address identified issues and return (revised_text, prompt_tokens, completion_tokens)."""
     prompt = f"""You are a revision assistant.
 
@@ -189,18 +231,26 @@ Paper:
 
 Return a revised version of the paper."""
     response = llm.invoke(prompt)
-    revised = response.content if isinstance(response.content, str) else str(response.content)
+    revised = (
+        response.content if isinstance(response.content, str) else str(response.content)
+    )
 
     # attempt to extract token usage for the revision call
     prompt_tokens = 0
     completion_tokens = 0
-    
+
     try:
-        usage = getattr(response, "usage_metadata", None) or getattr(response, "usage", None) 
+        usage = getattr(response, "usage_metadata", None) or getattr(
+            response, "usage", None
+        )
         if usage:
             if isinstance(usage, dict):
-                prompt_tokens = usage.get("input_tokens", 0) or usage.get("prompt_tokens", 0)
-                completion_tokens = usage.get("output_tokens", 0) or usage.get("completion_tokens", 0)
+                prompt_tokens = usage.get("input_tokens", 0) or usage.get(
+                    "prompt_tokens", 0
+                )
+                completion_tokens = usage.get("output_tokens", 0) or usage.get(
+                    "completion_tokens", 0
+                )
             else:
                 prompt_tokens = getattr(usage, "prompt_tokens", 0)
                 completion_tokens = getattr(usage, "completion_tokens", 0)

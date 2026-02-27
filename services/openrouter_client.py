@@ -15,14 +15,14 @@ logger = logging.getLogger(__name__)
 
 class TokenUsageTracker:
     """Track tokens used across agent calls."""
-    
+
     def __init__(self, task_id: UUID):
         self.task_id = task_id
         self.calls: list[Dict[str, Any]] = []
         self.total_input_tokens = 0
         self.total_output_tokens = 0
         self.total_cost = 0.0
-    
+
     def record_call(
         self,
         agent_name: str,
@@ -36,7 +36,7 @@ class TokenUsageTracker:
         duration_seconds: float,
     ):
         """Record a single LLM API call with full metadata."""
-        
+
         call_record = {
             "task_id": self.task_id,
             "agent_name": agent_name,
@@ -50,17 +50,17 @@ class TokenUsageTracker:
             "duration_seconds": duration_seconds,
             "timestamp": datetime.utcnow(),
         }
-        
+
         self.calls.append(call_record)
         self.total_input_tokens += prompt_tokens
         self.total_output_tokens += completion_tokens
         self.total_cost += cost_usd
-        
+
         logger.debug(
             f"[{agent_name}] {model}: "
             f"in={prompt_tokens} out={completion_tokens} cost=${cost_usd:.4f}"
         )
-    
+
     def get_summary(self) -> Dict[str, Any]:
         """Return aggregated usage statistics."""
         return {
@@ -79,17 +79,17 @@ class TokenUsageTracker:
 async def extract_token_usage(response) -> Dict[str, int]:
     """
     Extract token counts from LangChain ChatOpenAI response.
-    
+
     Handles OpenRouter/API token data with fallback mechanisms.
     Token data sources (in priority order):
     1. response.response_metadata.get("usage") - OpenRouter usage dict
     2. response.usage_metadata - LangChain usage attribute
     3. Estimate from content length if no metadata available
-    
+
     Returns:
         Dict with prompt_tokens, completion_tokens, total_tokens
     """
-    
+
     # Try to get usage from response metadata (OpenRouter format)
     if hasattr(response, "response_metadata"):
         usage = response.response_metadata.get("usage", {})
@@ -97,18 +97,20 @@ async def extract_token_usage(response) -> Dict[str, int]:
             return {
                 "prompt_tokens": usage.get("prompt_tokens", 0),
                 "completion_tokens": usage.get("completion_tokens", 0),
-                "total_tokens": usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0),
+                "total_tokens": usage.get("prompt_tokens", 0)
+                + usage.get("completion_tokens", 0),
             }
-    
+
     # Fallback: Try LangChain usage_metadata attribute
     if hasattr(response, "usage_metadata") and response.usage_metadata:
         usage = response.usage_metadata
         return {
             "prompt_tokens": usage.get("prompt_tokens", 0),
             "completion_tokens": usage.get("completion_tokens", 0),
-            "total_tokens": usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0),
+            "total_tokens": usage.get("prompt_tokens", 0)
+            + usage.get("completion_tokens", 0),
         }
-    
+
     # Final fallback: Estimate from content length (~4 characters per token)
     # This is approximate but better than 0 tokens
     if hasattr(response, "content") and response.content:
@@ -118,7 +120,7 @@ async def extract_token_usage(response) -> Dict[str, int]:
             "completion_tokens": output_tokens,
             "total_tokens": output_tokens,
         }
-    
+
     # No token data available
     logger.warning("No token usage metadata available in response; returning 0")
     return {

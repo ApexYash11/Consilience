@@ -3,7 +3,7 @@
 ## 🚀 What is Deep Research?
 
 Deep Research is the premium tier of Consilience that provides:
-- **8-12 Minutes** of research time (vs 3 for standard)
+- **7-12 Minutes** of research time (vs 3 for standard)
 - **18 Total Sub-Agents** across 3 rounds (10+5+3 vs 5)
 - **3 Research Rounds** (initial, gap analysis, controversy resolution)
 - **20+ Sources** guaranteed minimum
@@ -89,7 +89,7 @@ Deep Research is the premium tier of Consilience that provides:
 - Citation standardization
 - Output preparation (Markdown)
 
-**Total Time: 8-12 minutes**
+**Total Time: 7-12 minutes**
 
 ---
 
@@ -105,7 +105,7 @@ Synthesizer:      $0.50  (2500 tokens)
 Reviewer:         $0.40  (1800 tokens)
 Formatter:        $0.20  (1200 tokens)
 ────────────────────────
-Total:           $10.00  (25,000-30,000 tokens)
+Total:           $10.00  (~22,620 tokens)
 ```
 
 ### Monthly Cost Example (10 users, 1 task/month each)
@@ -116,7 +116,7 @@ Platform Cost:    $200   (base infrastructure)
 Total Monthly:    $300
 ────────────────────
 Revenue:          $290   (10 users × $29/month)
-Profit Margin:    $(10)  (slight loss at 10 users; break-even at ~12 users)
+Net Loss:         $(10)  (slight loss at 10 users; break-even at ~12 users)
 ```
 
 ---
@@ -404,13 +404,13 @@ Total:           417 sec (6.95 min)
 
 ### Token Usage Breakdown (typical)
 ```
-Planner:         120 tokens (0.5%)
-Sub-agents (18): 15,300    (68%)
-Verifier:        900       (4%)
-Detector:        800       (4%)
-Synthesizer:     2,500     (11%)
-Reviewer:        1,800     (8%)
-Formatter:       1,200     (5%)
+Planner:         120 tokens (0.53%)
+Sub-agents (18): 15,300    (67.63%)
+Verifier:        900       (3.98%)
+Detector:        800       (3.54%)
+Synthesizer:     2,500     (11.05%)
+Reviewer:        1,800     (7.96%)
+Formatter:       1,200     (5.31%)
 ────────────────
 Total:           22,620 tokens
 ```
@@ -464,7 +464,7 @@ for file in task_dir.glob("**/*"):
   "requirements": {
     "min_sources": 20,
     "focus_areas": ["crop yields", "soil health", "water availability"],
-    "include_controversies": true
+    "include_contradictions": true
   },
   "depth": "deep"
 }

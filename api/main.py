@@ -11,11 +11,7 @@ import asyncio
 import logging
 
 from core.config import get_settings
-from database.connection import (
-    init_async_db,
-    close_db,
-    get_async_session
-)
+from database.connection import init_async_db, close_db, get_async_session
 from api.dependencies import get_optional_user
 
 # Configure logging
@@ -30,7 +26,7 @@ app = FastAPI(
     title=settings.app_name,
     description="Multi-agent research orchestration platform",
     version=settings.app_version,
-    debug=settings.debug
+    debug=settings.debug,
 )
 
 # CORS middleware
@@ -45,9 +41,10 @@ app.add_middleware(
 
 # Startup and shutdown events
 
+
 async def validate_production_config():
     """Validate production configuration on startup.
-    
+
     CRITICAL: DEBUG must not be enabled in production environments.
     This handler runs before database initialization to fail fast.
     """
@@ -60,7 +57,7 @@ async def validate_production_config():
         )
         logger.critical(error_msg)
         raise RuntimeError(error_msg)
-    
+
     if settings.debug:
         logger.warning(
             f"DEBUG mode is ENABLED in {settings.environment.upper()} environment. "
@@ -72,14 +69,14 @@ async def validate_production_config():
 async def startup_event():
     """Initialize database and services on startup."""
     logger.info(f"{settings.app_name} API initializing...")
-    
+
     # Validate production config first (fail fast)
     try:
         await validate_production_config()
     except RuntimeError as e:
         logger.error(f"Production configuration validation failed: {str(e)}")
         raise
-    
+
     try:
         # Initialize async database
         await init_async_db()
@@ -100,7 +97,7 @@ async def shutdown_event():
 @app.get("/health")
 async def health_check(
     db: AsyncSession = Depends(get_async_session),
-    current_user = Depends(get_optional_user)
+    current_user=Depends(get_optional_user),
 ):
     """
     Health check endpoint.
@@ -118,7 +115,7 @@ async def health_check(
         "service": settings.app_name,
         "version": settings.app_version,
         "database": db_status,
-        "authenticated": current_user is not None
+        "authenticated": current_user is not None,
     }
 
 
@@ -131,12 +128,13 @@ async def root():
         "service": settings.app_name,
         "version": settings.app_version,
         "documentation": "/docs",
-        "health": "/health"
+        "health": "/health",
     }
 
 
 # Include routes
 from api.routes import research, auth
+
 # from api.routes import payments  # TODO: Implement Stripe integration
 
 app.include_router(research.router, prefix="/api/research", tags=["research"])
@@ -145,10 +143,5 @@ app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(
-        app,
-        host="0.0.0.0",
-        port=8000,
-        log_level="info"
-    )
 
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")

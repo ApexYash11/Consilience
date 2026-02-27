@@ -9,8 +9,9 @@
     "year": 2024,
     "doi": null,
     "url": null,
-    "credibility": 0.9,
+    "credibility": 0.5,
     "verified": false,
+    "status": "unverifiable — no DOI or URL available; credibility score set to 0.5 pending verification",
     "excerpt": null,
     "relevance_score": 0.5
   }

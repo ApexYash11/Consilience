@@ -10,6 +10,7 @@ from uuid import UUID, uuid4
 
 class CurrentUser(BaseModel):
     """Current authenticated user context."""
+
     user_id: str
     email: str
     tier: str  # "free" or "paid"
@@ -18,23 +19,27 @@ class CurrentUser(BaseModel):
 
 class UserBase(BaseModel):
     """Base user model."""
+
     email: EmailStr
     full_name: Optional[str] = None
 
 
 class UserCreate(UserBase):
     """User creation model."""
+
     password: str = Field(..., min_length=8)
 
 
 class UserLogin(BaseModel):
     """User login credentials."""
+
     email: EmailStr
     password: str
 
 
 class TokenResponse(BaseModel):
     """JWT token response."""
+
     access_token: str
     token_type: str = "bearer"
     expires_in: int
@@ -42,17 +47,20 @@ class TokenResponse(BaseModel):
 
 class UserResponse(BaseModel):
     """User response model."""
+
     id: UUID
     email: EmailStr
     full_name: Optional[str]
     subscription_tier: str = "free"
     created_at: datetime
+
     class Config:
         from_attributes = True
 
 
 class UserTierResponse(BaseModel):
     """User tier and quota information."""
+
     user_id: str
     email: str
     subscription_tier: str
@@ -60,4 +68,3 @@ class UserTierResponse(BaseModel):
     monthly_deep_quota: int
     current_standard_usage: int
     current_deep_usage: int
-
