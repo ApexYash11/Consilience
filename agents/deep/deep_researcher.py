@@ -74,7 +74,7 @@ class DeepResearchContext:
         self.research_round += 1
         
         # Format sources for file storage
-        sources_json = json.dumps([s.dict() for s in sources], indent=2)
+        sources_json = json.dumps([s.model_dump() for s in sources], indent=2)
         
         # Write round results
         await write_file(

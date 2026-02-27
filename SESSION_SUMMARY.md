@@ -141,7 +141,7 @@ FORMATTER
 
 ## 🧪 Testing Coverage
 
-### Test Classes (9 Total)
+### Test Classes (11 Total)
 1. **TestFileSystemTools** (7 tests)
    - Write/read files
    - Append operations

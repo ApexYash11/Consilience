@@ -480,7 +480,7 @@ async def get_deep_research_status(
             raise HTTPException(status_code=403, detail="Not authorized")
         
         # Verify it's a deep research task
-        if task.metadata_json and task.metadata_json.get("research_depth") != "deep":  # type: ignore
+        if not (task.metadata_json and task.metadata_json.get("research_depth") == "deep"):  # type: ignore
             raise HTTPException(status_code=404, detail="Task not found")
         
         # Estimate progress based on status
@@ -552,7 +552,7 @@ async def get_deep_research_result(
             raise HTTPException(status_code=403, detail="Not authorized")
         
         # Verify it's a deep research task
-        if task.metadata_json and task.metadata_json.get("research_depth") != "deep":  # type: ignore
+        if not (task.metadata_json and task.metadata_json.get("research_depth") == "deep"):  # type: ignore
             raise HTTPException(status_code=404, detail="Task not found")
         
         # Check if task is completed

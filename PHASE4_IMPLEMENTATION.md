@@ -47,7 +47,7 @@
    **Capabilities:**
    - Spawns 18 total sub-agents across 3 rounds (10 + 5 + 3)
    - Each sub-agent finds 3-5 sources = 54-90 sources total
-   - Parallel execution with 600-10-minute timeout
+   - Parallel execution with 600-second (10-minute) timeout
    - JSON response parsing with fallback handling
    - Token counting and cost tracking per sub-agent
    - Persistent context via file system (round results, analysis)
@@ -79,7 +79,7 @@
        ├─ Confidence < 0.4 → SYNTHESIZER-REDO
        └─ Else → REVIEWER
        ↓
-   REVIEWER (fact-checking with max 4 revision cycles)
+   REVIEWER (fact-checking with max 3 revision cycles)
        ├─ Issues found & attempt < 3 → SYNTHESIZER
        └─ Else → FORMATTER
        ↓

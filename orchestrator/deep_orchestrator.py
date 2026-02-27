@@ -166,7 +166,13 @@ def create_deep_research_graph():
     workflow.add_node("planner", planner_node)
     workflow.add_node("deep_researcher", deep_researcher_wrapper)
     workflow.add_node("verifier", verifier_deep_wrapper)
-    workflow.add_node("researcher_retry", lambda state: state)  # Fallback node
+    # Researcher retry node - increments rejection count
+    async def researcher_retry_wrapper(state: ResearchState) -> ResearchState:
+        """Increment rejection count and return unchanged state."""
+        state.verifier_rejection_count += 1
+        return state
+    
+    workflow.add_node("researcher_retry", researcher_retry_wrapper)
     workflow.add_node("detector", detector_deep_wrapper)
     workflow.add_node("synthesizer", synthesizer_deep_wrapper)
     workflow.add_node("synthesizer_redo", synthesizer_deep_wrapper)
@@ -183,7 +189,6 @@ def create_deep_research_graph():
     def route_after_verifier(state: ResearchState) -> str:
         """Route based on source quality score."""
         if state.source_quality_score < 0.2 and state.verifier_rejection_count < 1:
-            state.verifier_rejection_count += 1
             return "researcher_retry"
         else:
             return "detector"
@@ -223,13 +228,20 @@ def create_deep_research_graph():
     # Synthesizer redo routes back to reviewer
     workflow.add_edge("synthesizer_redo", "reviewer")
     
-    # Reviewer routing (deep research: max 4 revision attempts)
+    # Prepare revision node (increments attempt counter)
+    async def prepare_revision_wrapper(state: ResearchState) -> ResearchState:
+        """Increment revision attempt and clear revision flag."""
+        state.current_revision_attempt += 1
+        state.revision_needed = False
+        return state
+    
+    workflow.add_node("prepare_revision", prepare_revision_wrapper)
+    
+    # Reviewer routing (deep research: max 3 revision attempts)
     def route_after_reviewer(state: ResearchState) -> str:
         """Route based on revision needs and attempt count."""
         if state.revision_needed and state.current_revision_attempt < 3:
-            state.current_revision_attempt += 1
-            state.revision_needed = False
-            return "synthesizer"
+            return "prepare_revision"
         else:
             return "formatter"
     
@@ -237,10 +249,13 @@ def create_deep_research_graph():
         "reviewer",
         route_after_reviewer,
         {
-            "synthesizer": "synthesizer",
+            "prepare_revision": "prepare_revision",
             "formatter": "formatter",
         }
     )
+    
+    # Prepare revision routes to synthesizer
+    workflow.add_edge("prepare_revision", "synthesizer")
     
     # Formatter is terminal
     workflow.set_finish_point("formatter")
