@@ -8,11 +8,13 @@ from datetime import datetime
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.dependencies import get_db, get_current_user
+from api.dependencies import get_db, get_current_user, require_paid_tier
 from models.research import ResearchState, ResearchDepth, TaskStatus
 from services.research_service import ResearchService
 from orchestrator.standard_orchestrator import run_research, set_agent_action_logger
+from orchestrator.deep_orchestrator import run_deep_research, set_agent_action_logger as set_deep_agent_action_logger
 from database.connection import AsyncSessionLocal
+from services.deep_cost_estimator import estimate_deep_research_cost
 
 logger = logging.getLogger(__name__)
 
@@ -340,3 +342,297 @@ async def get_research_result(
         raise HTTPException(status_code=500, detail="Failed to get research result")
 
 
+# ============================================================================
+# DEEP RESEARCH ENDPOINTS (PAID TIER ONLY)
+# ============================================================================
+
+
+@router.post("/deep", response_model=CreateResearchResponse)
+async def create_deep_research(
+    request: CreateResearchRequest,
+    db: AsyncSession = Depends(get_db),
+    user = Depends(get_current_user),  # type: ignore
+    _ = Depends(require_paid_tier),  # Tier-gating: PAID tier required
+) -> CreateResearchResponse:
+    """
+    POST /api/research/deep
+    
+    Creates a new deep research task and starts it in the background.
+    
+    **REQUIRES PAID TIER**
+    
+    Deep research features:
+    - 10-15 parallel sub-agents instead of 5
+    - 3 recursive research rounds (initial, gap analysis, controversy resolution)
+    - Enhanced verification with semantic cross-referencing
+    - 3-5 revision cycles
+    - Persistent file-based context management
+    - Estimated duration: ~10 minutes
+    - Estimated cost: $5-15 per task
+    
+    Request Body:
+    {
+        "topic": "Climate change impacts on agriculture",
+        "requirements": {"min_sources": 20, "include_contradictions": true},
+        "depth": "deep"
+    }
+    
+    Returns:
+    {
+        "task_id": "550e8400-e29b-41d4-a716-446655440000",
+        "status": "pending",
+        "estimated_cost_usd": 9.50,
+        "estimated_time_minutes": 10
+    }
+    """
+    try:
+        # Verify deep research is requested
+        if request.depth != ResearchDepth.DEEP:
+            raise HTTPException(
+                status_code=400,
+                detail="This endpoint is for deep research only. Use /api/research/standard for standard research."
+            )
+        
+        # Estimate deep research cost
+        cost_estimate = estimate_deep_research_cost()
+        
+        # Create research task in database
+        task = await ResearchService.save_research_task(
+            session=db,
+            user_id=UUID(user.user_id),  # type: ignore
+            topic=request.topic,
+            research_depth=request.depth,
+            title=f"Deep Research: {request.topic}",
+            description=f"Deep research task with 3 rounds and semantic verification for {request.topic}",
+            estimated_cost_usd=cost_estimate["estimated_cost_usd"],
+        )
+        logger.info(f"Created deep research task {task.id} for user {user.user_id}")  # type: ignore
+
+        # Create ResearchState for workflow
+        state = ResearchState(
+            task_id=str(task.id),
+            topic=request.topic,
+            requirements=request.requirements or {},
+            num_sources_target=20,  # Deep research targets more sources
+        )
+
+        # Start deep research workflow as background asyncio task
+        task_id_str = str(task.id)  # type: ignore
+        task_id_uuid = UUID(task_id_str)  # type: ignore
+        
+        async def run_and_log_deep():
+            async with AsyncSessionLocal() as session:
+                await _execute_deep_research_background(task_id_uuid, state, session)
+
+        # Create and store the background task
+        background_task = asyncio.create_task(run_and_log_deep())
+        _running_tasks[task_id_str] = background_task
+
+        # Return immediately with task info
+        return CreateResearchResponse(
+            task_id=task_id_str,
+            status=TaskStatus.PENDING.value,
+            estimated_cost_usd=cost_estimate["estimated_cost_usd"],
+            estimated_time_minutes=cost_estimate["estimated_duration_minutes"],
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to create deep research task: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to create deep research task: {str(e)}")
+
+
+@router.get("/deep/{task_id}/status", response_model=ResearchStatusResponse)
+async def get_deep_research_status(
+    task_id: str,
+    db: AsyncSession = Depends(get_db),
+    user = Depends(get_current_user),  # type: ignore
+) -> ResearchStatusResponse:
+    """
+    GET /api/research/deep/{task_id}/status
+    
+    Gets the current status of a deep research task.
+    
+    Returns:
+    {
+        "task_id": "550e8400-e29b-41d4-a716-446655440000",
+        "status": "running",
+        "progress_percent": 45,
+        "cost_so_far": 2.50,
+        "tokens_used": 15000
+    }
+    """
+    try:
+        # Validate UUID format
+        try:
+            task_uuid = UUID(task_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid task_id format")
+
+        task = await ResearchService.get_research_task(db, task_uuid)
+        
+        if not task:
+            raise HTTPException(status_code=404, detail="Task not found")
+        
+        # Verify user owns task
+        if task.user_id != UUID(user.user_id):  # type: ignore
+            raise HTTPException(status_code=403, detail="Not authorized")
+        
+        # Verify it's a deep research task
+        if task.metadata_json and task.metadata_json.get("research_depth") != "deep":  # type: ignore
+            raise HTTPException(status_code=404, detail="Task not found")
+        
+        # Estimate progress based on status
+        progress_map = {
+            TaskStatus.PENDING: 0,
+            TaskStatus.RUNNING: 50,
+            TaskStatus.COMPLETED: 100,
+            TaskStatus.FAILED: 0,
+        }
+        progress = progress_map.get(task.status, 0)  # type: ignore
+        
+        return ResearchStatusResponse(
+            task_id=str(task.id),
+            status=task.status.value,  # type: ignore
+            progress_percent=progress,
+            cost_so_far=float(task.actual_cost_usd or 0.0),  # type: ignore
+            tokens_used=task.tokens_used or 0,  # type: ignore
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get deep research status: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to get deep research status")
+
+
+@router.get("/deep/{task_id}/result", response_model=ResearchResultResponse)
+async def get_deep_research_result(
+    task_id: str,
+    db: AsyncSession = Depends(get_db),
+    user = Depends(get_current_user),  # type: ignore
+) -> ResearchResultResponse:
+    """
+    GET /api/research/deep/{task_id}/result
+    
+    Gets the final research paper and results from a deep research task.
+    
+    Returns comprehensive research output with:
+    - Final paper (3-5 rounds of refinement)
+    - All sources (20+ from deep research)
+    - Contradictions found and analysis
+    - Detailed cost and token breakdown
+    
+    Returns:
+    {
+        "task_id": "550e8400-e29b-41d4-a716-446655440000",
+        "status": "completed",
+        "final_paper": "# Research Paper\n\nComprehensive analysis...",
+        "sources": [...],
+        "contradictions": [...],
+        "total_cost": 9.45,
+        "total_tokens": 65000
+    }
+    """
+    try:
+        # Validate UUID format
+        try:
+            task_uuid = UUID(task_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Malformed UUID")
+
+        task = await ResearchService.get_research_task(db, task_uuid)
+        
+        if not task:
+            raise HTTPException(status_code=404, detail="Task not found")
+        
+        # Verify user owns task
+        if task.user_id != UUID(user.user_id):  # type: ignore
+            raise HTTPException(status_code=403, detail="Not authorized")
+        
+        # Verify it's a deep research task
+        if task.metadata_json and task.metadata_json.get("research_depth") != "deep":  # type: ignore
+            raise HTTPException(status_code=404, detail="Task not found")
+        
+        # Check if task is completed
+        if task.status != TaskStatus.COMPLETED:  # type: ignore
+            raise HTTPException(
+                status_code=400,
+                detail=f"Task not completed. Current status: {task.status.value}"  # type: ignore
+            )
+        
+        # Extract result data from final_state_json
+        result_data = task.final_state_json or task.metadata_json or {}  # type: ignore
+        
+        return ResearchResultResponse(
+            task_id=str(task.id),
+            status=task.status.value,  # type: ignore
+            final_paper=result_data.get("final_paper", ""),  # type: ignore
+            sources=result_data.get("sources", []),  # type: ignore
+            contradictions=result_data.get("contradictions", []),  # type: ignore
+            total_cost=float(task.actual_cost_usd or 0.0),  # type: ignore
+            total_tokens=task.tokens_used or 0,  # type: ignore
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get deep research result: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to get deep research result")
+
+
+# ============================================================================
+# BACKGROUND EXECUTION HELPERS
+# ============================================================================
+
+
+async def _execute_deep_research_background(
+    task_id: UUID,
+    state: ResearchState,
+    session: AsyncSession,
+):
+    """
+    Background task that runs the entire deep research workflow.
+    """
+    try:
+        # Set the agent logging callback
+        set_deep_agent_action_logger(_log_agent_action_to_db)
+        
+        # Update task status to running
+        await ResearchService.update_research_task(
+            session=session,
+            task_id=task_id,
+            status=TaskStatus.RUNNING,
+        )
+        logger.info(f"Starting deep research workflow for task {task_id}")
+
+        # Run the deep research orchestrator
+        final_state = await run_deep_research(state)
+
+        # Update task with final results
+        await ResearchService.update_research_task(
+            session=session,
+            task_id=task_id,
+            status=TaskStatus.COMPLETED,
+            actual_cost_usd=float(final_state.cost or 0.0),
+            tokens_used=final_state.tokens_used,
+            final_state=final_state,
+        )
+        logger.info(
+            f"Deep research workflow completed for task {task_id}: "
+            f"cost=${final_state.cost:.4f}, tokens={final_state.tokens_used}"
+        )
+
+    except Exception as e:
+        logger.error(f"Deep research workflow failed for task {task_id}: {str(e)}", exc_info=True)
+        await ResearchService.update_research_task(
+            session=session,
+            task_id=task_id,
+            status=TaskStatus.FAILED,
+            error_message=str(e),
+        )
+    finally:
+        # Clean up the task from tracking
+        if str(task_id) in _running_tasks:  # type: ignore
+            del _running_tasks[str(task_id)]  # type: ignore
