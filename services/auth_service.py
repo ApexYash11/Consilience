@@ -1,5 +1,7 @@
 """Authentication service logic."""
 
+from typing import Optional
+
 from models.user import UserCreate, UserLogin, UserResponse, TokenResponse
 from models.payment import SubscriptionTier
 
@@ -16,13 +18,8 @@ class AuthService:
             created_at="2023-01-01T00:00:00",
         )
 
-    def authenticate_user(self, credentials: UserLogin) -> TokenResponse:
-        # Stub logic for authentication
-        if (
-            credentials.email == "test@example.com"
-            and credentials.password == "password"
-        ):
-            return TokenResponse(
-                access_token="fake-jwt-token", token_type="bearer", expires_in=3600
-            )
+    def authenticate_user(self, credentials: UserLogin) -> Optional[TokenResponse]:
+        # TODO: Replace with real user lookup against the database and proper
+        # bcrypt password verification (see core/security.py).
+        # This stub always returns None (authentication not yet implemented).
         return None

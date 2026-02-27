@@ -95,8 +95,8 @@ def estimate_deep_research_cost(
     # Completion: ~600 tokens (feedback + issues)
     reviewer_tokens_per_cycle = 600 + 600
 
-    # Expect 2-3 revision cycles for deep research
-    revision_cycles = 2 if enable_revision else 0
+    # Deep research targets 3 revision cycles (consistent with compare_research_depths)
+    revision_cycles = 3 if enable_revision else 0
     reviewer_tokens = reviewer_tokens_per_cycle * (1 + revision_cycles)
 
     # 7. FORMATTER: Final formatting
@@ -239,7 +239,11 @@ def estimate_monthly_cost(
         Dict with monthly cost estimates
     """
     standard_cost_per_task = 1.50
-    deep_cost_per_task = 10.00  # Based on estimate_deep_research_cost()
+    # Derive deep cost dynamically to stay consistent with estimate_deep_research_cost()
+    try:
+        deep_cost_per_task = estimate_deep_research_cost()["estimated_cost_usd"]
+    except Exception:
+        deep_cost_per_task = 10.00  # Fallback if estimation fails
 
     total_free_cost = free_tier_tasks * standard_cost_per_task
     total_paid_cost = paid_tier_tasks * deep_cost_per_task

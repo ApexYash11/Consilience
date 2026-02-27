@@ -34,7 +34,7 @@ class CreateResearchResponse(BaseModel):
     task_id: str
     status: str
     estimated_cost_usd: float
-    estimated_time_minutes: int
+    estimated_time_minutes: float
 
 
 class ResearchStatusResponse(BaseModel):

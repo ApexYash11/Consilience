@@ -9,6 +9,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.engine import make_url
+from sqlalchemy.exc import ArgumentError
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -150,8 +151,9 @@ async def init_async_db():
     # This robustly handles database names with hyphens, query parameters, and all edge cases
     try:
         url_obj = make_url(url_str)
-    except ValueError as ve:
+    except (ArgumentError, ValueError) as ve:
         # make_url() parsing failed - URL is malformed
+        # SQLAlchemy raises ArgumentError; keep ValueError for backward compatibility
         # SECURITY: Only include URL in debug/test mode to prevent credential leakage
         if DEBUG or IS_TEST:
             raise ValueError(f"Invalid DATABASE_URL format: {url_str}") from ve
