@@ -155,9 +155,10 @@ async def deep_researcher_node(
     context = DeepResearchContext(UUID(state.task_id))
     await context.initialize()
     
+    _local_session = session is None
     try:
         # Initialize database session if not provided
-        if session is None:
+        if _local_session:
             session = AsyncSessionLocal()
         
         # Get LLM for deep research
@@ -194,6 +195,9 @@ async def deep_researcher_node(
             )
             sub_agent_tasks.append(task)
         
+        # Convert to explicit Tasks for partial-result collection on timeout
+        sub_agent_tasks = [asyncio.ensure_future(t) for t in sub_agent_tasks]
+
         # Execute all sub-agents in parallel with timeout
         logger.info(f"[{agent_name}] Running {num_sub_agents} sub-agents in parallel...")
         
@@ -204,9 +208,22 @@ async def deep_researcher_node(
                     return_exceptions=True,
                 )
         except asyncio.TimeoutError:
-            logger.error(f"[{agent_name}] Sub-agent research timed out after 10 minutes")
-            state.errors.append("Deep research timed out after 10 minutes")
-            return state
+            logger.warning(f"[{agent_name}] Sub-agent research timed out; collecting partial results")
+            state.errors.append("Deep research timed out after 10 minutes; using partial results")
+            # Cancel remaining tasks and collect results from completed ones
+            for t in sub_agent_tasks:
+                if not t.done():
+                    t.cancel()
+            await asyncio.gather(*sub_agent_tasks, return_exceptions=True)
+            sub_agent_results = []
+            for t in sub_agent_tasks:
+                if t.done() and not t.cancelled():
+                    try:
+                        sub_agent_results.append(t.result())
+                    except Exception as exc:
+                        sub_agent_results.append(exc)
+                else:
+                    sub_agent_results.append(Exception("timed out"))
         
         # Process sub-agent results
         all_sources_found: List[Source] = []
@@ -373,6 +390,9 @@ async def deep_researcher_node(
         state.errors.append(f"Deep researcher error: {str(e)}")
         state.status = TaskStatus.FAILED
         return state
+    finally:
+        if _local_session and session is not None:
+            await session.close()
 
 
 async def _execute_sub_agent_research(

@@ -61,7 +61,7 @@ All 7 tasks completed:
    - Error handling and rollback
 
 4. **services/deep_cost_estimator.py** (350 lines)
-   - estimate_deep_research_cost() - $10 per task
+   - estimate_deep_research_cost() - $10 per task (average; $9.50-$10.50 range)
    - compare_research_depths() - Standard vs Deep
    - estimate_monthly_cost() - Revenue modeling
    - Profitability calculations

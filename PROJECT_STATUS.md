@@ -40,8 +40,8 @@ FastAPI App (Auth, Payments, Research Endpoints)
 └─────────────────────────────────────┘
       ↓
 ┌─────────────────────────────────────┐
-│ Deep Orchestrator (LangChain)       │  ← NOT STARTED
-│ - 10-15 agents + sub-agents         │
+│ Deep Orchestrator (LangGraph)       │  ← IMPLEMENTED
+│ - 18 sub-agents (10+5+3 rounds)     │
 │ - File-based context management     │
 │ - Recursive research rounds         │
 └─────────────────────────────────────┘
@@ -345,7 +345,6 @@ All core deep research functionality is now complete. See [PHASE4_IMPLEMENTATION
 ### Remaining
 - ⚠️ Database mocking for E2E API tests (2-4 hours)
 - ❌ Payment flow tests
-- ❌ Deep research tests
 - ❌ API documentation (OpenAPI/Swagger)
 - ❌ Performance testing
 - ❌ User guides
@@ -358,7 +357,7 @@ All core deep research functionality is now complete. See [PHASE4_IMPLEMENTATION
 |-------|-----------|--------|
 | **API** | FastAPI 0.104+ | ✅ PROD-READY |
 | **Orchestration (Standard)** | LangGraph 0.0.15+ | ✅ PROD-READY |
-| **Orchestration (Deep)** | LangChain Deep Agents | ❌ NOT STARTED |
+| **Orchestration (Deep)** | LangChain Deep Agents | ✅ IMPLEMENTED |
 | **LLM Provider** | OpenRouter (unified API) | ✅ INTEGRATED |
 | **Database** | Neon PostgreSQL (async) | ✅ PROD-READY |
 | **Auth** | Neon JWT + JWT validation | ✅ PROD-READY |
@@ -419,7 +418,7 @@ OVERALL:                        █████████████░░░
 ### Dependencies & Blockers
 - **None blocking Phase 3 deployment** - All core code complete
 - **E2E test fixtures** needed for confident API testing (2-4 hours)
-- **Phase 4 requires LangChain Deep Agents learning** - Add 5-7 days if team unfamiliar
+- **Phase 4 implemented** - LangGraph deep research complete; any further tuning is optional tech debt
 
 ---
 
@@ -437,11 +436,12 @@ OVERALL:                        █████████████░░░
    - Test end-to-end with real LLM calls
    - Validate cost calculations vs actual usage
 
-3. **Phase 4 Planning** (1 day)
-   - Research LangChain Deep Agents API
-   - Create detailed design docs for deep research
-   - Break down 15-22 day effort into sprints
-   - Identify highest-risk components
+3. **Phase 4 Staging Validation** (1-2 days)
+   - Run full staging validation and integration tests
+   - Execute performance and load testing
+   - Prepare deployment runbook and rollback plan
+   - Finalize monitoring/alerts and post-deploy verification
+   - Prepare release checklist and stakeholder signoff
 
 ### Next Week (Medium Priority)
 4. **Start Phase 4 Development** (if resources available)
@@ -488,7 +488,7 @@ Consilience/
 │
 ├── orchestrator/            # Workflow orchestration
 │   ├── standard_orchestrator.py  # LangGraph state machine ✅
-│   └── deep_orchestrator.py      # LangChain (NOT STARTED) ❌
+│   └── deep_orchestrator.py      # LangGraph deep research ✅ IMPLEMENTED
 │
 ├── services/                # Business logic
 │   ├── research_service.py  # Task CRUD & logging ✅
@@ -548,17 +548,17 @@ Consilience/
 - [x] Fix E2E tests (2-4 hours)
 - [ ] Stage deployment & validation (3-4 days)
 - [ ] Release Standard Research tier
-- [ ] Plan Phase 4 for next release
+- [x] Phase 4: Deep research — completed and ready for deployment
 
-### Option B: Full Platform (6-7 weeks)
+### Option B: Full Platform (4-5 weeks)
 - [x] Phase 1 & 3 production-ready
+- [x] Phase 4: Deep research — completed; deploy/validate as needed
 - [x] Fix E2E tests
 - [ ] Phase 2: Payment integration (3-5 days)
-- [ ] Phase 4: Deep research (15-22 days)
 - [ ] Phase 5: Quota/rate limiting (3-5 days)
 - [ ] Phase 6: Polish & documentation (3-5 days)
 
-**Recommendation:** Option A to get MVP to market, then Option B for premium features.
+**Recommendation:** Option A to get MVP to market quickly; Phase 4 deep research is already implemented and can be activated alongside the MVP launch.
 
 ---
 

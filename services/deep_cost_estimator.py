@@ -245,8 +245,12 @@ def estimate_monthly_cost(
     free_tier_revenue = 0  # Free tier
     paid_tier_revenue = paid_tier_tasks * 30  # $30/month per user (assume 1 task per month)
     
-    profit_margin = paid_tier_revenue - total_platform_cost
-    profit_margin_pct = (profit_margin / paid_tier_revenue * 100) if paid_tier_revenue > 0 else 0
+    if paid_tier_revenue > 0:
+        profit_margin = paid_tier_revenue - total_platform_cost
+        profit_margin_pct = profit_margin / paid_tier_revenue * 100
+    else:
+        profit_margin = 0
+        profit_margin_pct = 0
     
     return {
         "free_tier": {

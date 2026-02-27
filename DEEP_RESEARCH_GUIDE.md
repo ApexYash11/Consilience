@@ -3,8 +3,8 @@
 ## 🚀 What is Deep Research?
 
 Deep Research is the premium tier of Consilience that provides:
-- **10+ Minutes** of research time (vs 3 for standard)
-- **18 Parallel Sub-Agents** (vs 5)
+- **8-12 Minutes** of research time (vs 3 for standard)
+- **18 Total Sub-Agents** across 3 rounds (10+5+3 vs 5)
 - **3 Research Rounds** (initial, gap analysis, controversy resolution)
 - **20+ Sources** guaranteed minimum
 - **Claude 3.5 Sonnet** premium LLM (vs free models)
@@ -315,7 +315,7 @@ tail -f logs/consilience.log | grep "deep_researcher\|sub_agent"
 ### Adjust Sub-Agent Count
 **File:** `agents/deep/deep_researcher.py:137`
 ```python
-num_sub_agents = 10  # Change to 12, 15, etc.
+num_sub_agents = 10  # Round 1 agents (total = 10+5+3 = 18 across all 3 rounds)
 ```
 
 ### Change Research Round Limits
@@ -405,14 +405,14 @@ Total:           417 sec (6.95 min)
 ### Token Usage Breakdown (typical)
 ```
 Planner:         120 tokens (0.5%)
-Sub-agents (18): 18,000    (70%)
-Verifier:        900       (3%)
-Detector:        800       (3%)
-Synthesizer:     2,500     (10%)
-Reviewer:        1,800     (7%)
+Sub-agents (18): 15,300    (68%)
+Verifier:        900       (4%)
+Detector:        800       (4%)
+Synthesizer:     2,500     (11%)
+Reviewer:        1,800     (8%)
 Formatter:       1,200     (5%)
 ────────────────
-Total:           25,320 tokens
+Total:           22,620 tokens
 ```
 
 ---

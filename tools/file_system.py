@@ -348,10 +348,18 @@ async def update_todo_status(
             return result
         
         todos = result["todos"]
+        found = False
         for todo in todos:
             if todo.get("id") == todo_id:
                 todo["status"] = status
+                found = True
                 break
+        
+        if not found:
+            return {
+                "success": False,
+                "error": f"Todo with id '{todo_id}' not found",
+            }
         
         # Write back the updated todos
         write_result = await write_todos(task_id, todos)
