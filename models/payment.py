@@ -1,4 +1,5 @@
 """Payment-related models."""
+
 from pydantic import BaseModel
 from decimal import Decimal
 from typing import List
@@ -13,6 +14,7 @@ class SubscriptionTier(str, Enum):
 
 class SubscriptionStatus(str, Enum):
     """Stripe subscription status."""
+
     ACTIVE = "active"
     PAST_DUE = "past_due"
     CANCELED = "canceled"
@@ -29,11 +31,13 @@ class SubscriptionPlan(BaseModel):
 
 class StripeCheckoutSessionCreate(BaseModel):
     """Request to create a Stripe checkout session."""
+
     user_id: str
     tier: SubscriptionTier
 
 
 class StripeCheckoutSessionResponse(BaseModel):
     """Response from Stripe checkout creation."""
+
     checkout_url: str
     session_id: str

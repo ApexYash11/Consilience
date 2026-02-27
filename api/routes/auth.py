@@ -1,4 +1,5 @@
 """Auth routes for user registration and login."""
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from models.user import UserCreate, UserLogin, UserResponse, TokenResponse
 from services.auth_service import AuthService

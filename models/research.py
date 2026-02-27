@@ -1,4 +1,5 @@
 """Pydantic models for research tasks."""
+
 from datetime import datetime, timezone
 from enum import Enum
 from pydantic import BaseModel, Field
@@ -8,12 +9,14 @@ from typing import Optional, Dict, Any, List
 
 class ResearchDepth(str, Enum):
     """Research depth levels."""
+
     STANDARD = "standard"
     DEEP = "deep"
 
 
 class TaskStatus(str, Enum):
     """Research task execution status."""
+
     PENDING = "pending"
     RUNNING = "running"
     PAUSED = "paused"
@@ -43,6 +46,7 @@ class ResearchTask(BaseModel):
 
 class Source(BaseModel):
     """Represents a research source (paper, article, etc.)"""
+
     id: str
     title: str
     authors: Optional[List[str]] = None
@@ -58,6 +62,7 @@ class Source(BaseModel):
 
 class Contradiction(BaseModel):
     """Represents conflicting information from two sources"""
+
     source_a_id: str
     source_b_id: str
     claim_a: str
@@ -71,6 +76,7 @@ class ResearchState(BaseModel):
     The state object that flows through the LangGraph workflow.
     Each node adds/updates fields as it processes the research.
     """
+
     # Input
     task_id: str
     topic: str
@@ -110,7 +116,9 @@ class ResearchState(BaseModel):
     tokens_used: int = 0
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
-    execution_metrics: Optional[Dict[str, Any]] = None  # NEW: parallelism, duration, critical_path
+    execution_metrics: Optional[Dict[str, Any]] = (
+        None  # NEW: parallelism, duration, critical_path
+    )
 
     # Error handling
     errors: List[str] = []  # NEW: per-agent errors (don't fail entire workflow)
@@ -126,4 +134,5 @@ class ResearchState(BaseModel):
 
     class Config:
         """Pydantic config for serialization."""
+
         use_enum_values = True

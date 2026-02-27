@@ -64,9 +64,7 @@ def verifier_node(state: ResearchState) -> ResearchState:
                 logger.debug(f"Source rejected: {source.title} (score: {score:.2f})")
 
         state.verified_sources = verified
-        state.verification_notes = (
-            f"Verified {len(verified)}/{len(state.sources)} sources; rejected {len(rejected)}."
-        )
+        state.verification_notes = f"Verified {len(verified)}/{len(state.sources)} sources; rejected {len(rejected)}."
 
         state.tokens_used = (state.tokens_used or 0) + (len(state.sources) * 200)
         state.cost = (state.cost or 0.0) + 0.0
@@ -121,17 +119,23 @@ Return JSON only:
                 f"LLM invoke attempt {attempt} failed for source '{source.title}': {str(e)}"
             )
             if attempt < attempts:
-                backoff = 2 ** attempt
+                backoff = 2**attempt
                 time.sleep(backoff)
             else:
-                logger.exception("LLM invoke ultimately failed; falling back to heuristic scoring")
+                logger.exception(
+                    "LLM invoke ultimately failed; falling back to heuristic scoring"
+                )
 
     if response is None:
         # Fall back to heuristic scoring on repeated failure
         return heuristic_score(source)
 
     try:
-        payload = response.content if isinstance(response.content, str) else str(response.content)
+        payload = (
+            response.content
+            if isinstance(response.content, str)
+            else str(response.content)
+        )
 
         # Strip surrounding triple-backtick fences (e.g., ```json ... ```) if present
         import re

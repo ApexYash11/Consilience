@@ -1,4 +1,5 @@
 """Payment service skeleton (Stripe integration placeholder)."""
+
 from typing import Any
 
 

@@ -51,7 +51,11 @@ Paper:
 
     try:
         response = llm.invoke(prompt)
-        payload = response.content if isinstance(response.content, str) else str(response.content)
+        payload = (
+            response.content
+            if isinstance(response.content, str)
+            else str(response.content)
+        )
     except Exception as e:
         logger.exception("Reviewer LLM invoke failed")
         # Record failure state and return safely so workflow can handle it
@@ -76,11 +80,13 @@ Paper:
     # Extract token usage and cost from the LLM response when available
     try:
         cost_info = estimate_cost_from_response(response, model)
-        state.tokens_used = (state.tokens_used or 0) + int(cost_info.get("total_tokens", 0))
+        state.tokens_used = (state.tokens_used or 0) + int(
+            cost_info.get("total_tokens", 0)
+        )
         state.cost = (state.cost or 0.0) + float(cost_info.get("cost", 0.0))
     except Exception:
         # Fallback to the previous rough values if cost estimation fails
         state.tokens_used = (state.tokens_used or 0) + 3500
-        state.cost = (state.cost or 0.0)
+        state.cost = state.cost or 0.0
 
     return state

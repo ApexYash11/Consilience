@@ -1,11 +1,17 @@
 """Research service logic for task management and orchestration."""
+
 from typing import Optional, Dict, Any
 from datetime import datetime
 from uuid import UUID
 from sqlalchemy.orm import Session
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database.schema import ResearchTaskDB, AgentActionDB, TokenUsageLogDB, ResearchCheckpointDB
+from database.schema import (
+    ResearchTaskDB,
+    AgentActionDB,
+    TokenUsageLogDB,
+    ResearchCheckpointDB,
+)
 from models.research import TaskStatus, ResearchDepth, ResearchState
 import logging
 
@@ -73,7 +79,10 @@ class ResearchService:
             ResearchTaskDB or None if not found
         """
         from sqlalchemy import select
-        result = await session.execute(select(ResearchTaskDB).where(ResearchTaskDB.id == task_id))
+
+        result = await session.execute(
+            select(ResearchTaskDB).where(ResearchTaskDB.id == task_id)
+        )
         return result.scalar_one_or_none()
 
     @staticmethod
@@ -182,7 +191,9 @@ class ResearchService:
         session.add(agent_action)
         await session.flush()
         await session.commit()
-        logger.debug(f"Logged agent action: {agent_name}.{action} (tokens: {tokens_used}, cost: ${cost_usd:.4f})")
+        logger.debug(
+            f"Logged agent action: {agent_name}.{action} (tokens: {tokens_used}, cost: ${cost_usd:.4f})"
+        )
         return agent_action
 
     @staticmethod
@@ -201,8 +212,11 @@ class ResearchService:
             List of AgentActionDB records
         """
         from sqlalchemy import select
+
         result = await session.execute(
-            select(AgentActionDB).where(AgentActionDB.task_id == task_id).order_by(AgentActionDB.started_at)
+            select(AgentActionDB)
+            .where(AgentActionDB.task_id == task_id)
+            .order_by(AgentActionDB.started_at)
         )
         return list(result.scalars().all())
 

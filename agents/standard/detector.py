@@ -63,14 +63,14 @@ def detector_node(state: ResearchState) -> ResearchState:
                         claim_a=source_a.excerpt or source_a.title,
                         claim_b=source_b.excerpt or source_b.title,
                         severity=str(verdict.get("severity", "minor")),
-                        description=str(verdict.get("description", "Conflicting claims")),
+                        description=str(
+                            verdict.get("description", "Conflicting claims")
+                        ),
                     )
                 )
 
     state.contradictions = contradictions
-    state.contradiction_analysis = (
-        f"Detected {len(contradictions)} contradictions across {comparisons} comparisons."
-    )
+    state.contradiction_analysis = f"Detected {len(contradictions)} contradictions across {comparisons} comparisons."
     # Update tokens used from actual comparison counts
     computed_tokens = (total_input_tokens or 0) + (total_output_tokens or 0)
     # conservative fallback per-comparison estimate
@@ -80,7 +80,9 @@ def detector_node(state: ResearchState) -> ResearchState:
     else:
         # conservative fallback per-comparison estimate
         fallback_per_comparison = 150
-        state.tokens_used = (state.tokens_used or 0) + (comparisons * fallback_per_comparison)
+        state.tokens_used = (state.tokens_used or 0) + (
+            comparisons * fallback_per_comparison
+        )
 
     # Compute cost using separate input/output pricing
     try:
@@ -100,7 +102,7 @@ def detector_node(state: ResearchState) -> ResearchState:
 
         state.cost = (state.cost or 0.0) + input_cost + output_cost
     except Exception:
-        state.cost = (state.cost or 0.0)
+        state.cost = state.cost or 0.0
 
     logger.info(state.contradiction_analysis)
     return state
@@ -133,7 +135,9 @@ Return JSON only:
 """
 
     response = llm.invoke(prompt)
-    payload = response.content if isinstance(response.content, str) else str(response.content)
+    payload = (
+        response.content if isinstance(response.content, str) else str(response.content)
+    )
 
     # Extract usage metadata if available
     input_tokens = None
@@ -143,17 +147,33 @@ Return JSON only:
         if usage is not None:
             if isinstance(usage, dict):
                 input_tokens = usage.get("prompt_tokens") or usage.get("input_tokens")
-                output_tokens = usage.get("completion_tokens") or usage.get("output_tokens")
+                output_tokens = usage.get("completion_tokens") or usage.get(
+                    "output_tokens"
+                )
             else:
-                input_tokens = getattr(usage, "prompt_tokens", None) or getattr(usage, "input_tokens", None)
-                output_tokens = getattr(usage, "completion_tokens", None) or getattr(usage, "output_tokens", None)
+                input_tokens = getattr(usage, "prompt_tokens", None) or getattr(
+                    usage, "input_tokens", None
+                )
+                output_tokens = getattr(usage, "completion_tokens", None) or getattr(
+                    usage, "output_tokens", None
+                )
 
         # meta fallback
-        if (input_tokens is None or output_tokens is None) and hasattr(response, "meta"):
+        if (input_tokens is None or output_tokens is None) and hasattr(
+            response, "meta"
+        ):
             meta = getattr(response, "meta")
             if isinstance(meta, dict):
-                input_tokens = input_tokens or meta.get("prompt_tokens") or meta.get("input_tokens")
-                output_tokens = output_tokens or meta.get("completion_tokens") or meta.get("output_tokens")
+                input_tokens = (
+                    input_tokens
+                    or meta.get("prompt_tokens")
+                    or meta.get("input_tokens")
+                )
+                output_tokens = (
+                    output_tokens
+                    or meta.get("completion_tokens")
+                    or meta.get("output_tokens")
+                )
     except Exception:
         input_tokens = input_tokens or None
         output_tokens = output_tokens or None
@@ -167,8 +187,14 @@ Return JSON only:
     try:
         parsed = json.loads(payload)
         if not isinstance(parsed, dict):
-            logger.warning("Detector parsed non-dict JSON; falling back to no-contradiction.")
-            verdict = {"contradicts": False, "severity": "minor", "description": "Non-dict response."}
+            logger.warning(
+                "Detector parsed non-dict JSON; falling back to no-contradiction."
+            )
+            verdict = {
+                "contradicts": False,
+                "severity": "minor",
+                "description": "Non-dict response.",
+            }
         else:
             verdict = {
                 "contradicts": parsed.get("contradicts", False),
@@ -177,7 +203,14 @@ Return JSON only:
             }
     except json.JSONDecodeError:
         logger.warning("Detector could not parse response, assuming no contradiction.")
-        verdict = {"contradicts": False, "severity": "minor", "description": "Parsing failed."}
+        verdict = {
+            "contradicts": False,
+            "severity": "minor",
+            "description": "Parsing failed.",
+        }
 
-    cost_info = {"input_tokens": int(input_tokens or 0), "output_tokens": int(output_tokens or 0)}
+    cost_info = {
+        "input_tokens": int(input_tokens or 0),
+        "output_tokens": int(output_tokens or 0),
+    }
     return verdict, cost_info

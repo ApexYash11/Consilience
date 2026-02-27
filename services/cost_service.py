@@ -1,4 +1,5 @@
 """Cost estimation and tracking service skeleton."""
+
 from typing import Any
 
 
