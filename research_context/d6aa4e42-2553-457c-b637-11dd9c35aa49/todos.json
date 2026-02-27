@@ -1,0 +1,20 @@
+[
+  {
+    "id": 1,
+    "title": "Find sources",
+    "status": "completed",
+    "assigned_to": "agent_1"
+  },
+  {
+    "id": 2,
+    "title": "Verify credibility",
+    "status": "in_progress",
+    "assigned_to": "agent_2"
+  },
+  {
+    "id": 3,
+    "title": "Detect contradictions",
+    "status": "pending",
+    "assigned_to": "agent_3"
+  }
+]

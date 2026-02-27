@@ -12,17 +12,9 @@
 The GitHub Actions workflow (`run #22166591194`) was failing due to three issues:
 
 #### 1. **Database URL Parsing Bug** ✅ FIXED
-**Location:** `database/connection.py:153-167`
-**Problem:** PostgreSQL URL regex incorrectly captured `"localhost:5432"` as a single host parameter, but `asyncpg.connect()` requires separate `host=` and `port=` parameters.
-```python
-# BEFORE (BROKEN)
-match = re.match(r'postgresql[+\w]*://([^:]+):([^@]+)@([^/]+)/(\w+)', url_str)
-# Regex groups: (user, password, "localhost:5432", database) ← Wrong!
-
-# AFTER (FIXED)
-match = re.match(r'postgresql[+\w]*://([^:]+):([^@]+)@([^:/]+)(?::([0-9]+))?/(\w+)', url_str)
-# Regex groups: (user, password, host, optional_port, database) ← Correct!
-```
+**Location:** `database/connection.py:149-190`
+**Problem:** PostgreSQL URL parsing needed to correctly handle host:port separation for asyncpg.
+**Solution:** Replaced manual PostgreSQL URL parsing with SQLAlchemy's `make_url()` function which properly handles all URL formats.
 
 #### 2. **Unnecessary PostgreSQL Service** ✅ SIMPLIFIED
 **Location:** `.github/workflows/health-checks.yml`
@@ -46,7 +38,7 @@ match = re.match(r'postgresql[+\w]*://([^:]+):([^@]+)@([^:/]+)(?::([0-9]+))?/(\w
 
 | File | Change | Impact |
 |------|--------|--------|
-| `database/connection.py` | Fixed PostgreSQL URL parsing regex (lines 153-167) | Fixes potential connection errors with non-standard ports |
+| `database/connection.py` | Replaced manual URL parsing with SQLAlchemy make_url() (lines 149-190) | Correctly handles PostgreSQL URLs with non-standard ports |
 | `.github/workflows/health-checks.yml` | Removed PostgreSQL services from both jobs | Faster, simpler CI/CD |
 | `.github/workflows/health-checks.yml` | Changed DATABASE_URL to SQLite | Tests now run with in-memory compatible database |
 | `.github/workflows/health-checks.yml` | Added pytest-mock & pytest-cov to pip install | All required test dependencies available |
@@ -475,7 +467,7 @@ Week 4:
 ### Done
 - ✅ Database schema includes `usage_logs` table
 - ✅ User quota columns in schema (monthly_standard_quota, monthly_deep_quota)
-- ✅ Architecture documented in `arhitecture.md`
+- ✅ Architecture documented in `architecture.md`
 
 ### Remaining
 - ❌ Usage logging service (persist LLM call counts to `usage_logs`)
@@ -934,7 +926,7 @@ assert str(task.status) == str(TaskStatus.PENDING.value)
 - No Alembic migrations needed
 
 **Current Architecture:**
-- See `arhitecture.md` for full system design
+- See `architecture.md` for full system design
 - LangGraph for standard research (production-ready)
 - LangChain Deep Agents for premium tier (TODO)
 

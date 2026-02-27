@@ -1,0 +1,17 @@
+[
+  {
+    "id": "source_1",
+    "title": "Test Source",
+    "authors": [
+      "Author 1"
+    ],
+    "publication": "Test Journal",
+    "year": 2024,
+    "doi": null,
+    "url": null,
+    "credibility": 0.5,
+    "verified": false,
+    "excerpt": null,
+    "relevance_score": 0.5
+  }
+]
