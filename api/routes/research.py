@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.dependencies import get_db, get_current_user, require_paid_tier
+from api.dependencies import get_db, get_current_user, require_paid_tier, check_standard_quota, check_deep_quota
 from models.research import ResearchState, ResearchDepth, TaskStatus
 from services.research_service import ResearchService
 from orchestrator.standard_orchestrator import run_research, set_agent_action_logger
@@ -119,19 +119,37 @@ async def _execute_research_background(
         # Run the orchestrator
         final_state = await run_research(state)
 
+        cost = float(final_state.cost or 0.0)
+        tokens = final_state.tokens_used or 0
+
         # Update task with final results
         await ResearchService.update_research_task(
             session=session,
             task_id=task_id,
             status=TaskStatus.COMPLETED,
-            actual_cost_usd=float(final_state.cost or 0.0),
-            tokens_used=final_state.tokens_used,
+            actual_cost_usd=cost,
+            tokens_used=tokens,
             final_state=final_state,
         )
         logger.info(
             f"Research workflow completed for task {task_id}: "
-            f"cost=${final_state.cost:.4f}, tokens={final_state.tokens_used}"
+            f"cost=${cost:.4f}, tokens={tokens}"
         )
+
+        # Record usage for quota tracking
+        try:
+            from services.cost_service import CostService
+            task_record = await ResearchService.get_research_task(session, task_id)
+            if task_record is not None and task_record.user_id is not None:
+                depth = ResearchDepth(str(task_record.research_depth))
+                await CostService().record_usage(
+                    user_id=str(task_record.user_id),
+                    depth=depth,
+                    tokens_used=tokens,
+                    cost_usd=cost,
+                )
+        except Exception as usage_err:
+            logger.warning(f"Failed to record usage for task {task_id}: {usage_err}")
 
     except Exception as e:
         logger.error(
@@ -153,7 +171,7 @@ async def _execute_research_background(
 async def create_standard_research(
     request: CreateResearchRequest,
     db: AsyncSession = Depends(get_db),
-    user=Depends(get_current_user),  # type: ignore
+    user=Depends(check_standard_quota),  # enforces auth + quota
 ) -> CreateResearchResponse:
     """
     POST /api/research/standard
@@ -361,8 +379,7 @@ async def get_research_result(
 async def create_deep_research(
     request: CreateResearchRequest,
     db: AsyncSession = Depends(get_db),
-    user=Depends(get_current_user),  # type: ignore
-    _=Depends(require_paid_tier),  # Tier-gating: PAID tier required
+    user=Depends(check_deep_quota),  # enforces paid tier + quota
 ) -> CreateResearchResponse:
     """
     POST /api/research/deep

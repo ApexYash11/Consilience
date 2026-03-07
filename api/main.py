@@ -133,13 +133,14 @@ async def root():
 
 
 # Include routes
-from api.routes import research, auth
-
-# from api.routes import payments  # TODO: Implement Stripe integration
+from api.routes import research, auth, payments, webhooks
+from api.routes.users import router as users_router
 
 app.include_router(research.router, prefix="/api/research", tags=["research"])
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
-# app.include_router(payments.router, prefix="/api/payments", tags=["payments"])
+app.include_router(payments.router)  # prefix defined in router
+app.include_router(webhooks.router)  # prefix defined in router
+app.include_router(users_router)
 
 if __name__ == "__main__":
     import uvicorn

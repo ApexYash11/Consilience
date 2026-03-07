@@ -137,6 +137,110 @@ def client_with_db(async_db_session):
     app.dependency_overrides.clear()
 
 
+@pytest.fixture
+def client_with_auth(async_db_session):
+    """Create a FastAPI TestClient with both DB and JWT auth mocked.
+
+    Use this for E2E API tests hitting /api/research/* or /api/payments/*
+    that need a valid session and authenticated user without real Neon/JWKS.
+
+    Returns:
+        (TestClient, auth_headers dict) tuple
+    """
+    from database.connection import get_async_session
+    from api.dependencies import get_current_user
+    from core.security import NeonSecurityManager
+    from models.user import CurrentUser
+
+    # Mock DB
+    async def override_get_async_session():
+        yield async_db_session
+
+    # Mock authenticated free user
+    async def override_get_current_user():
+        return CurrentUser(
+            user_id=str(uuid4()),
+            email="testuser@example.com",
+            tier="free",
+            roles=["free"],
+        )
+
+    # Mock paid user override (can be swapped per-test via app.dependency_overrides)
+    async def override_get_paid_user():
+        return CurrentUser(
+            user_id=str(uuid4()),
+            email="paiduser@example.com",
+            tier="paid",
+            roles=["paid"],
+        )
+
+    app.dependency_overrides[get_async_session] = override_get_async_session
+    app.dependency_overrides[get_current_user] = override_get_current_user
+
+    test_token = _make_test_jwt(role="free")
+    headers = {"Authorization": f"Bearer {test_token}"}
+
+    client = TestClient(app)
+    yield client, headers
+
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def client_with_paid_auth(async_db_session):
+    """Same as client_with_auth but with PAID tier user — for deep research endpoints."""
+    from database.connection import get_async_session
+    from api.dependencies import get_current_user, require_paid_tier
+    from models.user import CurrentUser
+
+    paid_id = str(uuid4())
+
+    async def override_get_async_session():
+        yield async_db_session
+
+    async def override_get_current_user():
+        return CurrentUser(
+            user_id=paid_id,
+            email="paiduser@example.com",
+            tier="paid",
+            roles=["paid"],
+        )
+
+    async def override_require_paid_tier():
+        return CurrentUser(
+            user_id=paid_id,
+            email="paiduser@example.com",
+            tier="paid",
+            roles=["paid"],
+        )
+
+    app.dependency_overrides[get_async_session] = override_get_async_session
+    app.dependency_overrides[get_current_user] = override_get_current_user
+    app.dependency_overrides[require_paid_tier] = override_require_paid_tier
+
+    test_token = _make_test_jwt(role="paid")
+    headers = {"Authorization": f"Bearer {test_token}"}
+
+    client = TestClient(app)
+    yield client, headers
+
+    app.dependency_overrides.clear()
+
+
+def _make_test_jwt(role: str = "free") -> str:
+    """Build a signed test JWT (HS256, test secret)."""
+    payload = {
+        "sub": str(uuid4()),
+        "email": f"{role}user@example.com",
+        "roles": [role],
+        "iss": "https://neonauth.example.com",
+        "aud": "neondb",
+        "iat": int(datetime.utcnow().timestamp()),
+        "exp": int((datetime.utcnow() + timedelta(hours=1)).timestamp()),
+    }
+    return jwt.encode(payload, "test-secret-key-for-e2e-testing-consilience", algorithm="HS256")
+
+
 # ============================================================================
 # Authentication Fixtures
 # ============================================================================

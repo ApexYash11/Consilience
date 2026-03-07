@@ -1,28 +1,34 @@
-"""Payment routes for subscriptions and billing."""
+"""Payment routes for subscriptions and billing (Dodo Payments)."""
 
-from fastapi import APIRouter, Depends, HTTPException
-from models.payment import StripeCheckoutSessionCreate, StripeCheckoutSessionResponse
+from fastapi import APIRouter, Depends, HTTPException, status
+from models.payment import DodoCheckoutSessionCreate, DodoCheckoutSessionResponse, SubscriptionPlan
 from services.payment_service import PaymentService
+from api.dependencies import get_current_user
+from typing import List
 
 router = APIRouter(prefix="/api/payments", tags=["payments"])
 
 
-@router.get("/plans")
-async def get_plans(service: PaymentService = Depends()):
-    """Get available subscription plans."""
-    return service.get_plans()
+@router.get("/plans", response_model=List[SubscriptionPlan], summary="List available subscription plans")
+async def get_plans():
+    """Return all available subscription plans with pricing."""
+    return PaymentService.get_plans()
 
 
-@router.post("/checkout", response_model=StripeCheckoutSessionResponse)
+@router.post("/checkout", response_model=DodoCheckoutSessionResponse, summary="Create checkout session")
 async def create_checkout(
-    request: StripeCheckoutSessionCreate, service: PaymentService = Depends()
+    request: DodoCheckoutSessionCreate,
+    current_user=Depends(get_current_user),
 ):
-    """Create a Stripe checkout session for subscription."""
-    return service.create_checkout_session(request)
+    """Create a Dodo Payments checkout session. Returns a URL to redirect the user to."""
+    service = PaymentService()
+    return await service.create_checkout_session(user_id=current_user.user_id, tier=request.tier)
 
 
-@router.post("/webhook")
-async def stripe_webhook():
-    """Handle Stripe webhooks for payment updates."""
-    # Placeholder for webhook logic
-    return {"status": "received"}
+@router.post("/cancel", summary="Cancel current subscription")
+async def cancel_subscription(
+    current_user=Depends(get_current_user),
+):
+    """Cancel the authenticated user's active subscription."""
+    service = PaymentService()
+    return await service.cancel_subscription(user_id=current_user.user_id)

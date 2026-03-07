@@ -1,4 +1,4 @@
-"""Payment-related models."""
+"""Payment-related models (Dodo Payments)."""
 
 from pydantic import BaseModel
 from decimal import Decimal
@@ -13,7 +13,7 @@ class SubscriptionTier(str, Enum):
 
 
 class SubscriptionStatus(str, Enum):
-    """Stripe subscription status."""
+    """Dodo Payments subscription status."""
 
     ACTIVE = "active"
     PAST_DUE = "past_due"
@@ -29,15 +29,15 @@ class SubscriptionPlan(BaseModel):
     features: List[str]
 
 
-class StripeCheckoutSessionCreate(BaseModel):
-    """Request to create a Stripe checkout session."""
+class DodoCheckoutSessionCreate(BaseModel):
+    """Request to create a Dodo Payments checkout session."""
 
     user_id: str
     tier: SubscriptionTier
 
 
-class StripeCheckoutSessionResponse(BaseModel):
-    """Response from Stripe checkout creation."""
+class DodoCheckoutSessionResponse(BaseModel):
+    """Response from Dodo Payments checkout creation."""
 
     checkout_url: str
-    session_id: str
+    payment_id: str
