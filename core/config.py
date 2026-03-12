@@ -28,10 +28,10 @@ class Settings(BaseSettings):
     api_url: str = "http://localhost:8000"
     frontend_url: str = "http://localhost:3000"
     
-    # Stripe
-    stripe_secret_key: Optional[str] = Field(None, alias="STRIPE_SECRET_KEY")
-    stripe_publishable_key: Optional[str] = Field(None, alias="STRIPE_PUBLISHABLE_KEY")
-    stripe_webhook_secret: Optional[str] = Field(None, alias="STRIPE_WEBHOOK_SECRET")
+    # Dodo Payments
+    dodo_api_key: Optional[str] = Field(None, alias="DODO_API_KEY")
+    dodo_webhook_secret: Optional[str] = Field(None, alias="DODO_WEBHOOK_SECRET")
+    dodo_api_url: str = "https://api.dodopayments.com"
     
     # Environment
     environment: str = "development"  # development, staging, production

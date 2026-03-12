@@ -1,6 +1,6 @@
 """Audit models."""
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime
 from typing import Dict, Any
 from uuid import UUID, uuid4

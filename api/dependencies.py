@@ -121,3 +121,44 @@ async def require_admin(
             status_code=status.HTTP_403_FORBIDDEN, detail="Admin role required"
         )
     return current_user
+
+
+async def check_standard_quota(
+    current_user: CurrentUser = Depends(get_current_user),
+) -> CurrentUser:
+    """
+    Dependency to enforce standard research monthly quota.
+    Raises HTTP 429 if the user has used their monthly allowance.
+    """
+    from services.cost_service import CostService
+    from models.research import ResearchDepth
+
+    try:
+        await CostService().check_quota(current_user.user_id, ResearchDepth.STANDARD)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=str(exc),
+        )
+    return current_user
+
+
+async def check_deep_quota(
+    current_user: CurrentUser = Depends(require_paid_tier),
+) -> CurrentUser:
+    """
+    Dependency to enforce deep research monthly quota.
+    Combines paid-tier check + quota enforcement.
+    Raises HTTP 429 if the user has used their deep research allowance.
+    """
+    from services.cost_service import CostService
+    from models.research import ResearchDepth
+
+    try:
+        await CostService().check_quota(current_user.user_id, ResearchDepth.DEEP)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=str(exc),
+        )
+    return current_user

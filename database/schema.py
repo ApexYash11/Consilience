@@ -93,8 +93,8 @@ class UserDB(Base):
         default=SubscriptionStatus.ACTIVE,
         nullable=False
     )
-    stripe_customer_id = Column(String(255), unique=True, index=True)
-    stripe_subscription_id = Column(String(255), unique=True, index=True)
+    dodo_customer_id = Column(String(255), unique=True, index=True)
+    dodo_subscription_id = Column(String(255), unique=True, index=True)
     
     # Quotas
     monthly_standard_quota = Column(Integer, default=5)
@@ -241,9 +241,9 @@ class PaymentDB(Base):
     id = Column(GUID, primary_key=True, default=uuid4)
     user_id = Column(GUID, ForeignKey("users.id"), nullable=False, index=True)
     
-    # Stripe details
-    stripe_payment_intent_id = Column(String(255), unique=True, index=True)
-    stripe_session_id = Column(String(255), unique=True)
+    # Dodo Payments details
+    dodo_payment_id = Column(String(255), unique=True, index=True)
+    dodo_session_id = Column(String(255), unique=True)
     
     # Amount
     amount_usd = Column(Numeric(10, 2), nullable=False)
@@ -269,14 +269,14 @@ class PaymentDB(Base):
         return f"<Payment {self.id} {self.amount_usd} {self.status}>"
 
 
-class StripeWebhookEventDB(Base):
-    """Stripe webhook event log."""
-    __tablename__ = "stripe_webhook_events"
+class DodoWebhookEventDB(Base):
+    """Dodo Payments webhook event log."""
+    __tablename__ = "dodo_webhook_events"
     
     id = Column(GUID, primary_key=True, default=uuid4)
     
-    # Stripe event details
-    stripe_event_id = Column(String(255), unique=True, nullable=False, index=True)
+    # Dodo Payments event details
+    dodo_event_id = Column(String(255), unique=True, nullable=False, index=True)
     event_type = Column(String(100), nullable=False)
     
     # Data
