@@ -1,8 +1,8 @@
 # Consilience — Project Plan & Roadmap
 
 **Platform:** Production-grade multi-agent research orchestration  
-**Date:** March 8, 2026  
-**Overall Completion:** ~85%
+**Date:** March 12, 2026  
+**Overall Completion:** ~85% (Phases 1, 3, 4 Code-Complete; Phases 2, 5, 6 In Progress)
 
 ---
 
@@ -32,7 +32,7 @@ Two tiers:
 ---
 
 ## Phase Status
-
+## Phase Status
 | Phase | Status | Notes |
 |---|---|---|
 | 1 — Foundation | ✅ 100% | FastAPI, auth, DB, CI/CD — 39/41 tests pass |
