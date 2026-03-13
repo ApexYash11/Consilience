@@ -162,7 +162,7 @@ class TestUsageTracking:
     """Test usage recording."""
 
     async def test_record_standard_usage_works(self):
-        """Recording usage succeeds."""
+        """Recording usage succeeds and calls session methods."""
         with patch('services.cost_service.AsyncSessionLocal') as mock_session_local:
             mock_session = AsyncMock(spec=AsyncSession)
             mock_session_local.return_value.__aenter__.return_value = mock_session
@@ -176,9 +176,12 @@ class TestUsageTracking:
                 tokens_used=2000,
                 cost_usd=1.50,
             )
+            
+            assert mock_session.add.called
+            assert mock_session.commit.awaited
 
     async def test_record_deep_usage_works(self):
-        """Recording deep usage succeeds."""
+        """Recording deep usage succeeds and calls session methods."""
         with patch('services.cost_service.AsyncSessionLocal') as mock_session_local:
             mock_session = AsyncMock(spec=AsyncSession)
             mock_session_local.return_value.__aenter__.return_value = mock_session
@@ -192,6 +195,9 @@ class TestUsageTracking:
                 tokens_used=8000,
                 cost_usd=5.00,
             )
+            
+            assert mock_session.add.called
+            assert mock_session.commit.awaited
 
     async def test_usage_record_creates_entry(self):
         """Usage recording calls commit."""
@@ -269,7 +275,7 @@ class TestUsageSummary:
             assert "standard_research" in summary or "standard" in summary
 
     async def test_get_usage_summary_shows_remaining(self):
-        """Usage summary calculates remaining quota."""
+        """Usage summary calculates remaining quota correctly."""
         mock_user = UserDB(
             id="test_user",
             email="test@example.com",
@@ -288,10 +294,12 @@ class TestUsageSummary:
             cost_service = CostService()
             summary = await cost_service.get_usage_summary("test_user")
             
-            assert isinstance(summary, dict)
+            assert summary["standard_research"]["quota"] == 10
+            assert summary["standard_research"]["used"] == 3
+            assert summary["standard_research"]["remaining"] == 7
 
     async def test_get_usage_summary_free_tier_no_deep(self):
-        """Free tier shows no deep research."""
+        """Free tier shows zero quota for deep research."""
         mock_user = UserDB(
             id="test_user",
             email="test@example.com",
@@ -310,10 +318,11 @@ class TestUsageSummary:
             cost_service = CostService()
             summary = await cost_service.get_usage_summary("test_user")
             
-            assert isinstance(summary, dict)
+            assert summary["deep_research"]["available"] is False
+            assert summary["deep_research"]["quota"] == 0
 
     async def test_get_usage_summary_paid_tier_has_deep(self):
-        """Paid tier has deep research quota."""
+        """Paid tier has deep research quota available."""
         mock_user = UserDB(
             id="test_user",
             email="test@example.com",
@@ -332,7 +341,8 @@ class TestUsageSummary:
             cost_service = CostService()
             summary = await cost_service.get_usage_summary("test_user")
             
-            assert isinstance(summary, dict)
+            assert summary["deep_research"]["available"] is True
+            assert summary["deep_research"]["quota"] == 10
 
     async def test_get_usage_summary_includes_costs(self):
         """Usage summary includes cost information."""
