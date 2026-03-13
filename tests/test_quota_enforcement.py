@@ -306,6 +306,10 @@ class TestUsageSummary:
             subscription_tier="free",
             monthly_standard_quota=5,
             monthly_deep_quota=0,
+            standard_papers_this_month=0,
+            deep_papers_this_month=0,
+            total_tokens_this_month=0,
+            total_cost_this_month=0.00,
         )
         
         with patch('services.cost_service.AsyncSessionLocal') as mock_session_local:
@@ -329,6 +333,10 @@ class TestUsageSummary:
             subscription_tier="pro",
             monthly_standard_quota=20,
             monthly_deep_quota=10,
+            standard_papers_this_month=0,
+            deep_papers_this_month=0,
+            total_tokens_this_month=0,
+            total_cost_this_month=0.00,
         )
         
         with patch('services.cost_service.AsyncSessionLocal') as mock_session_local:
@@ -350,6 +358,10 @@ class TestUsageSummary:
             id="test_user",
             email="test@example.com",
             subscription_tier="free",
+            monthly_standard_quota=5,
+            monthly_deep_quota=0,
+            standard_papers_this_month=0,
+            deep_papers_this_month=0,
             total_tokens_this_month=1000,
             total_cost_this_month=5.00,
         )

@@ -111,8 +111,8 @@ async def async_db_session(async_test_db_engine):
         yield session
 
 
-@pytest.fixture(scope="function", autouse=True)
-def patch_async_session_local(async_test_db_engine):
+@pytest.fixture(scope="session", autouse=True)
+async def patch_async_session_local(async_test_db_engine):
     """
     Auto-patch AsyncSessionLocal for all tests.
     This ensures services like CostService use the test database.
@@ -128,10 +128,11 @@ def patch_async_session_local(async_test_db_engine):
     original_session_local = connection.AsyncSessionLocal
     connection.AsyncSessionLocal = TestAsyncSessionLocal
     
-    yield
-    
-    # Restore original
-    connection.AsyncSessionLocal = original_session_local
+    try:
+        yield
+    finally:
+        # Restore original
+        connection.AsyncSessionLocal = original_session_local
 
 
 # ============================================================================

@@ -166,7 +166,7 @@ async def check_deep_quota(
     return current_user
 
 
-async def check_rate_limit_factory(
+def check_rate_limit_factory(
     max_requests: int = 10, window_seconds: int = 60
 ):
     """
@@ -197,7 +197,7 @@ async def check_rate_limit_factory(
         """
         limiter = get_rate_limiter()
 
-        # Atomically check and record the request
+        # Atomically check and record the request (check_and_record is synchronous)
         allowed = limiter.check_and_record(
             current_user.user_id, max_requests, window_seconds
         )
