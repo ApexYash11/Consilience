@@ -10,7 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.security import get_security_manager, extract_bearer_token
 from database.connection import get_async_session
 from models.user import CurrentUser
-
+from models.research import ResearchDepth
+from services.cost_service import CostService
+from services.rate_limiter import get_rate_limiter
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:  # type: ignore
     """
@@ -161,4 +163,31 @@ async def check_deep_quota(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=str(exc),
         )
+    return current_user
+
+
+async def check_rate_limit(
+    current_user: CurrentUser = Depends(get_current_user),
+    max_requests: int = 10,
+    window_seconds: int = 60,
+) -> CurrentUser:
+    """
+    Dependency to enforce per-user rate limiting on research endpoints.
+    Default: 10 requests per minute per user.
+
+    Raises:
+        HTTPException: 429 if user exceeds rate limit
+    """
+    limiter = get_rate_limiter()
+
+    # Check if user is rate limited
+    if limiter.is_rate_limited(current_user.user_id, max_requests, window_seconds):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Rate limit exceeded: {max_requests} requests per {window_seconds} seconds",
+        )
+
+    # Record this request
+    limiter.add_request(current_user.user_id)
+
     return current_user

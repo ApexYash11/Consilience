@@ -141,5 +141,5 @@ class CostService:
             },
             "tokens_this_month": user.total_tokens_this_month or 0,
             "cost_this_month_usd": float(user.total_cost_this_month or 0.0),
-            "subscription_tier": user.subscription_tier.value if user.subscription_tier else "free",
+            "subscription_tier": user.subscription_tier if isinstance(user.subscription_tier, str) else (user.subscription_tier.value if user.subscription_tier else "free"),
         }
