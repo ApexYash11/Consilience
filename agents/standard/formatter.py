@@ -83,8 +83,8 @@ def formatter_node(state: ResearchState) -> ResearchState:
                 setattr(state, "revision_error", "REVISION_FAILED")
             except Exception:
                 try:
-                    state.__dict__["revision_failed"] = True
-                    state.__dict__["revision_error"] = "REVISION_FAILED"
+                    object.__setattr__(state, "revision_failed", True)
+                    object.__setattr__(state, "revision_error", "REVISION_FAILED")
                 except Exception:
                     pass
             # revert to original draft if revision failed

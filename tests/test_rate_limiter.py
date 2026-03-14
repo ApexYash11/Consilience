@@ -7,7 +7,7 @@ Tests request tracking and rate limit enforcement.
 import pytest
 from datetime import datetime, timedelta
 from uuid import uuid4
-from freezegun import freeze_time
+from freezegun import freeze_time  # type: ignore
 
 from services.rate_limiter import RateLimitStore, get_rate_limiter
 
