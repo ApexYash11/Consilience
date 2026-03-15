@@ -24,11 +24,20 @@ from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from fastapi.testclient import TestClient
 from fastapi import HTTPException, status
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch, AsyncMock, MagicMock
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
+
+# ============================================================================
+# Mock Heavy Dependencies BEFORE importing app
+# ============================================================================
+# This prevents import-time dependency issues with transformers/langchain
+sys.modules['transformers'] = MagicMock()
+sys.modules['langchain_openai'] = MagicMock()
+sys.modules['langchain_openai.chat_models'] = MagicMock()
+sys.modules['langchain_openai.chat_models.azure'] = MagicMock()
 
 from database.schema import Base
 from api.main import app
@@ -100,6 +109,30 @@ async def async_db_session(async_test_db_engine):
     
     async with AsyncSessionLocal() as session:
         yield session
+
+
+@pytest.fixture(scope="session", autouse=True)
+async def patch_async_session_local(async_test_db_engine):
+    """
+    Auto-patch AsyncSessionLocal for all tests.
+    This ensures services like CostService use the test database.
+    """
+    TestAsyncSessionLocal = async_sessionmaker(
+        async_test_db_engine,
+        class_=AsyncSession,
+        expire_on_commit=False
+    )
+    
+    # Patch database.connection.AsyncSessionLocal to use test database
+    from database import connection
+    original_session_local = connection.AsyncSessionLocal
+    connection.AsyncSessionLocal = TestAsyncSessionLocal
+    
+    try:
+        yield
+    finally:
+        # Restore original
+        connection.AsyncSessionLocal = original_session_local
 
 
 # ============================================================================
@@ -254,6 +287,34 @@ def free_user() -> CurrentUser:
         tier="free",
         roles=["free"]
     )
+
+
+@pytest.fixture
+async def test_user_id(async_db_session) -> str:
+    """Create a test user in the database and return its ID."""
+    from models.payment import SubscriptionTier
+    from database.schema import UserDB
+    
+    user_id = str(uuid4())
+    
+    # Create user in async session
+    user = UserDB(
+        id=user_id,
+        email=f"testuser_{user_id[:8]}@example.com",
+        subscription_tier=SubscriptionTier.FREE.value,
+        monthly_standard_quota=5,
+        monthly_deep_quota=3,
+        standard_papers_this_month=0,
+        deep_papers_this_month=0,
+        total_tokens_this_month=0,
+        total_cost_this_month=0.0,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow()
+    )
+    async_db_session.add(user)
+    await async_db_session.commit()
+    
+    return user_id
 
 
 @pytest.fixture

@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.dependencies import get_db, get_current_user, require_paid_tier, check_standard_quota, check_deep_quota
+from api.dependencies import get_db, get_current_user, require_paid_tier, check_standard_quota, check_deep_quota, check_rate_limit
 from models.research import ResearchState, ResearchDepth, TaskStatus
 from services.research_service import ResearchService
 from orchestrator.standard_orchestrator import run_research, set_agent_action_logger
@@ -19,6 +19,7 @@ from orchestrator.deep_orchestrator import (
 )
 from database.connection import AsyncSessionLocal
 from services.deep_cost_estimator import estimate_deep_research_cost
+from services.cost_service import CostService
 
 logger = logging.getLogger(__name__)
 
@@ -172,6 +173,7 @@ async def create_standard_research(
     request: CreateResearchRequest,
     db: AsyncSession = Depends(get_db),
     user=Depends(check_standard_quota),  # enforces auth + quota
+    _rate_limited=Depends(check_rate_limit),  # enforces rate limit
 ) -> CreateResearchResponse:
     """
     POST /api/research/standard
@@ -380,6 +382,7 @@ async def create_deep_research(
     request: CreateResearchRequest,
     db: AsyncSession = Depends(get_db),
     user=Depends(check_deep_quota),  # enforces paid tier + quota
+    _rate_limited=Depends(check_rate_limit),  # enforces rate limit
 ) -> CreateResearchResponse:
     """
     POST /api/research/deep
@@ -656,6 +659,22 @@ async def _execute_deep_research_background(
             f"Deep research workflow completed for task {task_id}: "
             f"cost=${final_state.cost:.4f}, tokens={final_state.tokens_used}"
         )
+
+        # Record usage for quota tracking (fixed: was missing for deep research)
+        try:
+            task_record = await ResearchService.get_research_task(session, task_id)
+            if task_record is not None and task_record.user_id is not None:
+                depth = ResearchDepth(str(task_record.research_depth))
+                cost = float(final_state.cost or 0.0)
+                tokens = final_state.tokens_used or 0
+                await CostService().record_usage(
+                    user_id=str(task_record.user_id),
+                    depth=depth,
+                    tokens_used=tokens,
+                    cost_usd=cost,
+                )
+        except Exception as usage_err:
+            logger.warning(f"Failed to record usage for deep research task {task_id}: {usage_err}")
 
     except Exception as e:
         logger.error(

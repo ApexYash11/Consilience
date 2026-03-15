@@ -10,7 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.security import get_security_manager, extract_bearer_token
 from database.connection import get_async_session
 from models.user import CurrentUser
-
+from models.research import ResearchDepth
+from services.cost_service import CostService
+from services.rate_limiter import get_rate_limiter
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:  # type: ignore
     """
@@ -161,4 +163,73 @@ async def check_deep_quota(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=str(exc),
         )
+    return current_user
+
+
+def check_rate_limit_factory(
+    max_requests: int = 10, window_seconds: int = 60
+):
+    """
+    Factory function to create a configurable rate limit dependency.
+    
+    Args:
+        max_requests: Maximum requests allowed in the time window
+        window_seconds: Time window in seconds
+    
+    Returns:
+        An async dependency that checks and enforces rate limits
+    
+    Example:
+        @app.post("/api/research/standard")
+        async def create_research(
+            current_user: CurrentUser = Depends(check_rate_limit_factory(max_requests=10, window_seconds=60))
+        ):
+            ...
+    """
+    async def rate_limit_check(
+        current_user: CurrentUser = Depends(get_current_user),
+    ) -> CurrentUser:
+        """
+        Dependency to enforce per-user rate limiting on research endpoints.
+
+        Raises:
+            HTTPException: 429 if user exceeds rate limit
+        """
+        limiter = get_rate_limiter()
+
+        # Atomically check and record the request (check_and_record is synchronous)
+        allowed = limiter.check_and_record(
+            current_user.user_id, max_requests, window_seconds
+        )
+        
+        if not allowed:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Rate limit exceeded: {max_requests} requests per {window_seconds} seconds",
+            )
+
+        return current_user
+
+    return rate_limit_check
+
+
+async def check_rate_limit(
+    current_user: CurrentUser = Depends(get_current_user),
+) -> CurrentUser:
+    """
+    Default rate limit dependency (10 requests per 60 seconds).
+    
+    For custom limits, use: Depends(check_rate_limit_factory(max_requests, window_seconds))
+    """
+    limiter = get_rate_limiter()
+
+    # Use atomic check_and_record instead of separate is_rate_limited + add_request
+    allowed = limiter.check_and_record(current_user.user_id, max_requests=10, window_seconds=60)
+    
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Rate limit exceeded: 10 requests per 60 seconds",
+        )
+
     return current_user
