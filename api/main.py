@@ -85,6 +85,16 @@ async def startup_event():
         logger.error(f"Failed to initialize database: {str(e)}")
         raise
 
+    # Run cleanup of old research context directories
+    try:
+        from services.cleanup_service import cleanup_old_research_context
+        deleted = await cleanup_old_research_context()
+        if deleted > 0:
+            logger.info(f"Startup cleanup: removed {deleted} old research context directories")
+    except Exception as e:
+        logger.warning(f"Research context cleanup failed (non-blocking): {str(e)}")
+        # Don't raise - cleanup failure should not block API startup
+
 
 @app.on_event("shutdown")
 async def shutdown_event():

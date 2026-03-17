@@ -14,7 +14,9 @@ router = APIRouter(prefix="/api/users", tags=["users"])
 @router.get(
     "/usage",
     summary="Current month usage and quota",
+    description="Get usage statistics and remaining quota for the authenticated user",
     response_description="Token usage, paper counts, and remaining quota for the current billing period.",
+    tags=["users"],
 )
 async def get_usage(
     current_user=Depends(get_current_user),

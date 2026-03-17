@@ -168,7 +168,7 @@ async def _execute_research_background(
             del _running_tasks[str(task_id)]  # type: ignore
 
 
-@router.post("/standard", response_model=CreateResearchResponse)
+@router.post("/standard", response_model=CreateResearchResponse, summary="Create standard research task", description="Initiates a standard research task that runs in the background. Results are processed asynchronously.", tags=["research"])
 async def create_standard_research(
     request: CreateResearchRequest,
     db: AsyncSession = Depends(get_db),
@@ -247,7 +247,7 @@ async def create_standard_research(
         )
 
 
-@router.get("/standard/{task_id}/status", response_model=ResearchStatusResponse)
+@router.get("/standard/{task_id}/status", response_model=ResearchStatusResponse, summary="Get standard research status", description="Retrieve the current status of a standard research task.", tags=["research"])
 async def get_research_status(
     task_id: str,
     db: AsyncSession = Depends(get_db),
@@ -307,7 +307,7 @@ async def get_research_status(
         raise HTTPException(status_code=500, detail="Failed to get research status")
 
 
-@router.get("/standard/{task_id}/result", response_model=ResearchResultResponse)
+@router.get("/standard/{task_id}/result", response_model=ResearchResultResponse, summary="Get standard research results", description="Retrieve the final results of a completed standard research task.", tags=["research"])
 async def get_research_result(
     task_id: str,
     db: AsyncSession = Depends(get_db),
@@ -377,7 +377,7 @@ async def get_research_result(
 # ============================================================================
 
 
-@router.post("/deep", response_model=CreateResearchResponse)
+@router.post("/deep", response_model=CreateResearchResponse, summary="Create deep research task", description="Initiates a deep research task with multiple research rounds and synthesis. Requires paid subscription.", tags=["research"])
 async def create_deep_research(
     request: CreateResearchRequest,
     db: AsyncSession = Depends(get_db),
@@ -475,7 +475,7 @@ async def create_deep_research(
         )
 
 
-@router.get("/deep/{task_id}/status", response_model=ResearchStatusResponse)
+@router.get("/deep/{task_id}/status", response_model=ResearchStatusResponse, summary="Get deep research status", description="Retrieve the current status of a deep research task.", tags=["research"])
 async def get_deep_research_status(
     task_id: str,
     db: AsyncSession = Depends(get_db),
@@ -541,7 +541,7 @@ async def get_deep_research_status(
         )
 
 
-@router.get("/deep/{task_id}/result", response_model=ResearchResultResponse)
+@router.get("/deep/{task_id}/result", response_model=ResearchResultResponse, summary="Get deep research results", description="Retrieve the final results of a completed deep research task.", tags=["research"])
 async def get_deep_research_result(
     task_id: str,
     db: AsyncSession = Depends(get_db),
