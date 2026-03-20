@@ -45,28 +45,28 @@ def serialize_state_compact(state: Any) -> Dict[str, Any]:
     """
     try:
         snapshot = {
-            "task_id": getattr(state, "task_id", ""),
-            "topic": getattr(state, "topic", "")[:100],  # Limit to 100 chars
-            "status": str(getattr(state, "status", "pending")),
-            "revision_needed": bool(getattr(state, "revision_needed", False)),
-            "fallback_triggered": bool(getattr(state, "fallback_triggered", False)),
+            "task_id": str(getattr(state, "task_id", "") or ""),
+            "topic": (getattr(state, "topic", "") or "")[:100],  # Limit to 100 chars, handle None
+            "status": str(getattr(state, "status", "pending") or "pending"),
+            "revision_needed": bool(getattr(state, "revision_needed", False) or False),
+            "fallback_triggered": bool(getattr(state, "fallback_triggered", False) or False),
             
-            # Counts
-            "num_sources": len(getattr(state, "sources", [])),
-            "num_verified_sources": len(getattr(state, "verified_sources", [])),
-            "num_contradictions": len(getattr(state, "contradictions", [])),
-            "num_issues_found": len(getattr(state, "issues_found", [])),
-            "num_errors": len(getattr(state, "errors", [])),
+            # Counts - default to 0-length list if None
+            "num_sources": len(getattr(state, "sources", None) or []),
+            "num_verified_sources": len(getattr(state, "verified_sources", None) or []),
+            "num_contradictions": len(getattr(state, "contradictions", None) or []),
+            "num_issues_found": len(getattr(state, "issues_found", None) or []),
+            "num_errors": len(getattr(state, "errors", None) or []),
             
-            # Scores and metrics
-            "synthesis_confidence": float(getattr(state, "synthesis_confidence", 0.0)),
-            "source_quality_score": float(getattr(state, "source_quality_score", 0.0)),
-            "cost": float(getattr(state, "cost", 0.0)),
-            "tokens_used": int(getattr(state, "tokens_used", 0)),
+            # Scores and metrics - default to 0 if None
+            "synthesis_confidence": float(getattr(state, "synthesis_confidence", None) or 0.0),
+            "source_quality_score": float(getattr(state, "source_quality_score", None) or 0.0),
+            "cost": float(getattr(state, "cost", None) or 0.0),
+            "tokens_used": int(getattr(state, "tokens_used", None) or 0),
             
-            # Revision tracking
-            "current_revision_attempt": int(getattr(state, "current_revision_attempt", 0)),
-            "verifier_rejection_count": int(getattr(state, "verifier_rejection_count", 0)),
+            # Revision tracking - default to 0 if None
+            "current_revision_attempt": int(getattr(state, "current_revision_attempt", None) or 0),
+            "verifier_rejection_count": int(getattr(state, "verifier_rejection_count", None) or 0),
         }
         
         # Add output lengths if available
@@ -172,7 +172,10 @@ def extract_state_delta(state_before: Any, state_after: Any) -> Dict[str, Any]:
         before_compact = serialize_state_compact(state_before)
         after_compact = serialize_state_compact(state_after)
         
-        for key in after_compact.keys():
+        # Iterate over union of keys to catch additions and removals
+        all_keys = set(before_compact.keys()) | set(after_compact.keys())
+        
+        for key in all_keys:
             before_val = before_compact.get(key)
             after_val = after_compact.get(key)
             

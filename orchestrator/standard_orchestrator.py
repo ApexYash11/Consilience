@@ -11,7 +11,7 @@ from services.research_service import ResearchService
 from database.connection import AsyncSessionLocal
 import asyncio
 from datetime import datetime
-from typing import Callable, Optional, Dict, Any, cast
+from typing import Callable, Optional, Dict, Any
 from uuid import UUID
 import logging
 
@@ -353,7 +353,7 @@ async def run_research(initial_state: ResearchState) -> ResearchState:
             "run_name": f"research_{initial_state.task_id}",
             "tags": ["research", "standard", "orchestration"],
             "metadata": {
-                "task_id": initial_state.task_id,
+                "task_id": str(initial_state.task_id),  # Convert UUID to string for JSON serialization
                 "topic": initial_state.topic[:100],  # Truncate to avoid large metadata
                 "research_depth": "standard",
                 "num_sources_target": initial_state.num_sources_target,

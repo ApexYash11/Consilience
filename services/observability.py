@@ -68,13 +68,8 @@ def safe_get_current_run_id() -> Optional[str]:
     if not LANGSMITH_AVAILABLE or not is_tracing_enabled():
         return None
     
-    try:
-        # LangSmith doesn't expose a built-in context getter in v0.1+
-        # Return None; traces are linked via LangGraph integration automatically
-        return None
-    except Exception as e:
-        logger.debug(f"Failed to get current run ID: {str(e)}")
-    
+    # LangSmith doesn't expose a built-in context getter in v0.1+
+    # Traces are linked via LangGraph integration automatically
     return None
 
 
@@ -207,7 +202,7 @@ def merge_metadata(
     existing: Optional[Dict[str, Any]],
     new: Optional[Dict[str, Any]],
 ) -> Dict[str, Any]:
-    """Merge new metadata into existing metadata dict, preserving existing keys.
+    """Merge new metadata into existing metadata dict; new values override existing keys.
     
     Args:
         existing: Base metadata dict (or None)
@@ -275,11 +270,20 @@ def attach_metadata_to_run(
         if not client:
             return False
         
-        # LangSmith run update API
-        # This may require a different approach depending on version
-        logger.debug(f"Attaching metadata to run {run_id}")
+        # LangSmith SDK v0.1+ provides update_run method on client
+        # Attempt to update the run with the provided metadata
+        try:
+            # Try the standard update_run API if available
+            client.update_run(run_id, extra=metadata)
+        except AttributeError:
+            # Fallback: if update_run not available, try alternative API
+            # Different LangSmith versions may have different interfaces
+            logger.warning(f"update_run not available on client; metadata not attached for run {run_id}")
+            return False
+        
+        logger.debug(f"Attached metadata to run {run_id}")
         return True
         
     except Exception as e:
-        logger.debug(f"Failed to attach metadata to run: {str(e)}")
+        logger.error(f"Failed to attach metadata to run {run_id}: {str(e)}")
         return False

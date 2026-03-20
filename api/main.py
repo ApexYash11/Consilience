@@ -85,8 +85,17 @@ def initialize_langsmith_tracing():
             # Set environment variables for LangChain/LangGraph auto-pickup
             os.environ["LANGCHAIN_TRACING_V2"] = "true"
             os.environ["LANGCHAIN_API_KEY"] = settings.langchain_api_key
-            os.environ["LANGCHAIN_PROJECT"] = settings.langchain_project
-            os.environ["LANGCHAIN_ENDPOINT"] = settings.langchain_endpoint
+            
+            # Only set project and endpoint if they are non-empty strings
+            if settings.langchain_project:
+                os.environ["LANGCHAIN_PROJECT"] = settings.langchain_project
+            else:
+                logger.error("LangSmith tracing enabled but LANGCHAIN_PROJECT not configured")
+                
+            if settings.langchain_endpoint:
+                os.environ["LANGCHAIN_ENDPOINT"] = settings.langchain_endpoint
+            else:
+                logger.error("LangSmith tracing enabled but LANGCHAIN_ENDPOINT not configured")
             
             logger.info(
                 f"LangSmith tracing initialized for project '{settings.langchain_project}'"

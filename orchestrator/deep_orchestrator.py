@@ -287,7 +287,7 @@ async def run_deep_research(initial_state: ResearchState) -> ResearchState:
             "run_name": f"deep_research_{initial_state.task_id}",
             "tags": ["research", "deep", "multi-agent", "orchestration"],
             "metadata": {
-                "task_id": initial_state.task_id,
+                "task_id": str(initial_state.task_id),  # Convert UUID to string for JSON serialization
                 "topic": initial_state.topic[:100],  # Truncate to avoid large metadata
                 "research_depth": "deep",
                 "research_mode": "deep",
