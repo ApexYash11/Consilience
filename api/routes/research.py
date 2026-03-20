@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import os
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from uuid import UUID, uuid4
@@ -12,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.dependencies import get_db, get_current_user, require_paid_tier, check_standard_quota, check_deep_quota, check_rate_limit
 from models.research import ResearchState, ResearchDepth, TaskStatus
 from services.research_service import ResearchService
+from services.observability import safe_trace_async, safe_get_current_run_id, merge_metadata, log_metric
 from orchestrator.standard_orchestrator import run_research, set_agent_action_logger
 from orchestrator.deep_orchestrator import (
     run_deep_research,
@@ -104,6 +106,11 @@ async def _execute_research_background(
     """
     Background task that runs the entire research workflow.
     This function is designed to run as an asyncio task without blocking.
+    
+    Wrapped with LangSmith tracing for observability:
+    - Captures task metadata (topic, depth, user_id)
+    - Tracks execution flow and costs
+    - Enables state snapshots for debugging
     """
     try:
         # Set the agent logging callback for this execution
@@ -117,13 +124,69 @@ async def _execute_research_background(
         )
         logger.info(f"Starting research workflow for task {task_id}")
 
-        # Run the orchestrator
-        final_state = await run_research(state)
+        # Fetch task record for metadata
+        task_record = await ResearchService.get_research_task(session, task_id)
+        user_id = "unknown"
+        research_depth = "standard"
+        if task_record and hasattr(task_record, 'user_id'):
+            try:
+                # Safely extract user_id from ORM object without evaluating Column as bool
+                user_id_value = getattr(task_record, 'user_id', None)
+                user_id = str(user_id_value) if user_id_value else "unknown"
+            except Exception:
+                user_id = "unknown"
+        if task_record:
+            research_depth = getattr(task_record, 'research_depth', 'standard') or 'standard'
 
-        cost = float(final_state.cost or 0.0)
-        tokens = final_state.tokens_used or 0
+        # Prepare trace metadata
+        trace_metadata = {
+            "task_id": str(task_id),
+            "topic": state.topic[:100],  # Truncate to avoid large strings
+            "research_depth": str(research_depth),
+            "user_id": user_id,
+            "num_sources_target": state.num_sources_target,
+        }
+
+        # Run orchestrator with tracing
+        # The trace context sets up LangSmith tracing if enabled
+        async with safe_trace_async(
+            name=f"research_task_{task_id}",
+            run_type="chain",
+            metadata=trace_metadata,
+            tags=["research", "standard", str(research_depth)],
+        ) as run_id:
+            # Get LangSmith run ID if tracing is enabled
+            if run_id:
+                logger.debug(f"Task {task_id} tracing enabled with run ID: {run_id}")
+            
+            # Run the orchestrator
+            final_state = await run_research(state)
+
+            cost = float(final_state.cost or 0.0)
+            tokens = final_state.tokens_used or 0
+
+            # Log metrics for observability
+            log_metric(
+                "research_completed",
+                {
+                    "task_id": str(task_id),
+                    "cost": cost,
+                    "tokens": tokens,
+                    "sources": len(final_state.sources or []),
+                },
+            )
 
         # Update task with final results
+        # Extract metadata_json safely from SQLAlchemy ORM object
+        existing_metadata = {}
+        if task_record and hasattr(task_record, 'metadata_json'):
+            existing_metadata = task_record.metadata_json if isinstance(task_record.metadata_json, dict) else {}
+        
+        final_metadata = merge_metadata(
+            existing_metadata,
+            {"langsmith_run_id": run_id} if run_id else {},
+        )
+        
         await ResearchService.update_research_task(
             session=session,
             task_id=task_id,
@@ -131,6 +194,7 @@ async def _execute_research_background(
             actual_cost_usd=cost,
             tokens_used=tokens,
             final_state=final_state,
+            metadata_json=final_metadata,
         )
         logger.info(
             f"Research workflow completed for task {task_id}: "
@@ -139,10 +203,8 @@ async def _execute_research_background(
 
         # Record usage for quota tracking
         try:
-            from services.cost_service import CostService
-            task_record = await ResearchService.get_research_task(session, task_id)
             if task_record is not None and task_record.user_id is not None:
-                depth = ResearchDepth(str(task_record.research_depth))
+                depth = ResearchDepth(str(research_depth))
                 await CostService().record_usage(
                     user_id=str(task_record.user_id),
                     depth=depth,
@@ -156,6 +218,13 @@ async def _execute_research_background(
         logger.error(
             f"Research workflow failed for task {task_id}: {str(e)}", exc_info=True
         )
+        
+        # Log failure metric
+        log_metric(
+            "research_failed",
+            {"task_id": str(task_id), "error": str(e)[:100]},
+        )
+        
         await ResearchService.update_research_task(
             session=session,
             task_id=task_id,
@@ -630,6 +699,11 @@ async def _execute_deep_research_background(
 ):
     """
     Background task that runs the entire deep research workflow.
+    
+    Wrapped with LangSmith tracing for observability:
+    - Captures task metadata (topic, depth, user_id)
+    - Tracks execution flow and multi-agent coordination
+    - Enables state snapshots for debugging agent decisions
     """
     try:
         # Set the agent logging callback
@@ -643,30 +717,89 @@ async def _execute_deep_research_background(
         )
         logger.info(f"Starting deep research workflow for task {task_id}")
 
-        # Run the deep research orchestrator
-        final_state = await run_deep_research(state)
+        # Fetch task record for metadata
+        task_record = await ResearchService.get_research_task(session, task_id)
+        user_id = "unknown"
+        research_depth = "deep"
+        if task_record and hasattr(task_record, 'user_id'):
+            try:
+                # Safely extract user_id from ORM object without evaluating Column as bool
+                user_id_value = getattr(task_record, 'user_id', None)
+                user_id = str(user_id_value) if user_id_value else "unknown"
+            except Exception:
+                user_id = "unknown"
+        if task_record:
+            research_depth = getattr(task_record, 'research_depth', 'deep') or 'deep'
 
-        # Update task with final results
+        # Prepare trace metadata
+        trace_metadata = {
+            "task_id": str(task_id),
+            "topic": state.topic[:100],
+            "research_depth": str(research_depth),
+            "user_id": user_id,
+            "num_sources_target": state.num_sources_target,
+            "research_mode": "deep",
+        }
+
+        # Run orchestrator with tracing
+        async with safe_trace_async(
+            name=f"deep_research_task_{task_id}",
+            run_type="chain",
+            metadata=trace_metadata,
+            tags=["research", "deep", "multi-agent"],
+        ) as run_id:
+            # Get LangSmith run ID if tracing is enabled
+            if run_id:
+                logger.debug(f"Task {task_id} tracing enabled with run ID: {run_id}")
+            
+            # Run the deep research orchestrator
+            final_state = await run_deep_research(state)
+
+            cost = float(final_state.cost or 0.0)
+            tokens = final_state.tokens_used or 0
+
+            # Log metrics for observability
+            log_metric(
+                "deep_research_completed",
+                {
+                    "task_id": str(task_id),
+                    "cost": cost,
+                    "tokens": tokens,
+                    "sources": len(final_state.verified_sources or []),
+                    "contradictions": len(final_state.contradictions or []),
+                    "synthesis_confidence": final_state.synthesis_confidence,
+                },
+            )
+
+        # Update task with final results (with LangSmith correlation)
+        # Extract metadata_json safely from SQLAlchemy ORM object
+        existing_metadata = {}
+        if task_record and hasattr(task_record, 'metadata_json'):
+            existing_metadata = task_record.metadata_json if isinstance(task_record.metadata_json, dict) else {}
+        
+        final_metadata = merge_metadata(
+            existing_metadata,
+            {"langsmith_run_id": run_id} if run_id else {},
+        )
+        
         await ResearchService.update_research_task(
             session=session,
             task_id=task_id,
             status=TaskStatus.COMPLETED,
-            actual_cost_usd=float(final_state.cost or 0.0),
-            tokens_used=final_state.tokens_used,
+            actual_cost_usd=cost,
+            tokens_used=tokens,
             final_state=final_state,
+            metadata_json=final_metadata,
         )
         logger.info(
             f"Deep research workflow completed for task {task_id}: "
-            f"cost=${final_state.cost:.4f}, tokens={final_state.tokens_used}"
+            f"cost=${cost:.4f}, tokens={tokens}"
         )
 
-        # Record usage for quota tracking (fixed: was missing for deep research)
+        # Record usage for quota tracking
         try:
-            task_record = await ResearchService.get_research_task(session, task_id)
             if task_record is not None and task_record.user_id is not None:
-                depth = ResearchDepth(str(task_record.research_depth))
-                cost = float(final_state.cost or 0.0)
-                tokens = final_state.tokens_used or 0
+                depth = ResearchDepth(str(research_depth))
                 await CostService().record_usage(
                     user_id=str(task_record.user_id),
                     depth=depth,
@@ -680,6 +813,13 @@ async def _execute_deep_research_background(
         logger.error(
             f"Deep research workflow failed for task {task_id}: {str(e)}", exc_info=True
         )
+        
+        # Log failure metric
+        log_metric(
+            "deep_research_failed",
+            {"task_id": str(task_id), "error": str(e)[:100]},
+        )
+        
         await ResearchService.update_research_task(
             session=session,
             task_id=task_id,

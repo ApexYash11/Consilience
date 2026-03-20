@@ -24,6 +24,12 @@ class Settings(BaseSettings):
     # Anthropic / Claude
     ANTHROPIC_API_KEY: str | None = None
 
+    # LangSmith Observability
+    LANGCHAIN_TRACING_V2: bool = False
+    LANGCHAIN_API_KEY: str | None = None
+    LANGCHAIN_PROJECT: str = "consilience-dev"
+    LANGCHAIN_ENDPOINT: str = "https://api.smith.langchain.com"
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 

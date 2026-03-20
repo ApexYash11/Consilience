@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     environment: str = "development"  # development, staging, production
     debug: bool = False
     
+    # LangSmith Observability
+    langchain_tracing_v2: bool = Field(False, alias="LANGCHAIN_TRACING_V2")
+    langchain_api_key: Optional[str] = Field(None, alias="LANGCHAIN_API_KEY")
+    langchain_project: str = Field("consilience-dev", alias="LANGCHAIN_PROJECT")
+    langchain_endpoint: str = Field("https://api.smith.langchain.com", alias="LANGCHAIN_ENDPOINT")
+    
     class Config:
         env_file = ".env"
         case_sensitive = False
