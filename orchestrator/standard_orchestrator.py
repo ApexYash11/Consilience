@@ -11,7 +11,7 @@ from services.research_service import ResearchService
 from database.connection import AsyncSessionLocal
 import asyncio
 from datetime import datetime
-from typing import Callable, Optional
+from typing import Callable, Optional, Dict, Any
 from uuid import UUID
 import logging
 
@@ -348,10 +348,23 @@ async def run_research(initial_state: ResearchState) -> ResearchState:
     initial_state.status = TaskStatus.RUNNING
     
     try:
-        # Invoke compiled graph
+        # Prepare LangSmith config with metadata for observability
+        config: Dict[str, Any] = {
+            "run_name": f"research_{initial_state.task_id}",
+            "tags": ["research", "standard", "orchestration"],
+            "metadata": {
+                "task_id": str(initial_state.task_id),  # Convert UUID to string for JSON serialization
+                "topic": initial_state.topic[:100],  # Truncate to avoid large metadata
+                "research_depth": "standard",
+                "num_sources_target": initial_state.num_sources_target,
+                "num_queries": len(initial_state.research_queries or []),
+            }
+        }
+        
+        # Invoke compiled graph with enhanced config
         final_state_dict = await _research_graph.ainvoke(
             initial_state,
-            config={"run_name": f"research_{initial_state.task_id}"}
+            config=config  # type: ignore
         )
         
         # Convert dict back to ResearchState Pydantic model

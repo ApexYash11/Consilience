@@ -10,7 +10,7 @@ Orchestrates advanced research workflows with:
 """
 
 import logging
-from typing import Optional, Callable, cast
+from typing import Optional, Callable, cast, Dict, Any
 from uuid import UUID
 
 from langgraph.graph import StateGraph
@@ -282,8 +282,22 @@ async def run_deep_research(initial_state: ResearchState) -> ResearchState:
         # Create the graph
         graph = create_deep_research_graph()
         
-        # Execute the workflow
-        final_state = cast(ResearchState, await graph.ainvoke(initial_state))
+        # Prepare LangSmith config with metadata for observability
+        config: Dict[str, Any] = {
+            "run_name": f"deep_research_{initial_state.task_id}",
+            "tags": ["research", "deep", "multi-agent", "orchestration"],
+            "metadata": {
+                "task_id": str(initial_state.task_id),  # Convert UUID to string for JSON serialization
+                "topic": initial_state.topic[:100],  # Truncate to avoid large metadata
+                "research_depth": "deep",
+                "research_mode": "deep",
+                "num_sources_target": initial_state.num_sources_target,
+                "num_queries": len(initial_state.research_queries or []),
+            }
+        }
+        
+        # Execute the workflow with enhanced config
+        final_state = cast(ResearchState, await graph.ainvoke(initial_state, config=config))  # type: ignore
         
         logger.info(
             f"Deep research workflow completed for task {initial_state.task_id}: "

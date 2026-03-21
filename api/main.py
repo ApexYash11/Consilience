@@ -65,6 +65,51 @@ async def validate_production_config():
         )
 
 
+def initialize_langsmith_tracing():
+    """Initialize LangSmith observability if configured.
+    
+    Sets environment variables for LangChain/LangGraph to pick up.
+    Failures are logged but do not block startup.
+    """
+    import os
+    
+    try:
+        if settings.langchain_tracing_v2:
+            if not settings.langchain_api_key:
+                logger.warning(
+                    "LangSmith tracing enabled but LANGCHAIN_API_KEY not set. "
+                    "Tracing will not work until API key is provided."
+                )
+                return
+            
+            # Set environment variables for LangChain/LangGraph auto-pickup
+            os.environ["LANGCHAIN_TRACING_V2"] = "true"
+            os.environ["LANGCHAIN_API_KEY"] = settings.langchain_api_key
+            
+            # Only set project and endpoint if they are non-empty strings
+            if settings.langchain_project:
+                os.environ["LANGCHAIN_PROJECT"] = settings.langchain_project
+            else:
+                logger.error("LangSmith tracing enabled but LANGCHAIN_PROJECT not configured")
+                
+            if settings.langchain_endpoint:
+                os.environ["LANGCHAIN_ENDPOINT"] = settings.langchain_endpoint
+            else:
+                logger.error("LangSmith tracing enabled but LANGCHAIN_ENDPOINT not configured")
+            
+            logger.info(
+                f"LangSmith tracing initialized for project '{settings.langchain_project}'"
+            )
+        else:
+            # Ensure tracing is disabled if not configured
+            os.environ["LANGCHAIN_TRACING_V2"] = "false"
+            logger.debug("LangSmith tracing is disabled")
+    except Exception as e:
+        logger.warning(f"LangSmith initialization failed (non-blocking): {str(e)}")
+        # Don't raise - tracing failure should not block API startup
+
+
+
 @app.on_event("startup")
 async def startup_event():
     """Initialize database and services on startup."""
@@ -76,6 +121,13 @@ async def startup_event():
     except RuntimeError as e:
         logger.error(f"Production configuration validation failed: {str(e)}")
         raise
+
+    # Initialize LangSmith tracing if configured
+    try:
+        initialize_langsmith_tracing()
+    except Exception as e:
+        logger.warning(f"LangSmith initialization failed (non-blocking): {str(e)}")
+        # Don't raise - tracing failure should not block API startup
 
     try:
         # Initialize async database

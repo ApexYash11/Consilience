@@ -12,6 +12,8 @@ langchain>=0.1.0
 langgraph>=0.0.15
 anthropic>=0.12.0
 openai>=1.12.0
+langsmith>=0.6.3
+
 # tools
 duckduckgo-search>=5.0.0
 httpx>=0.27.0
