@@ -1,6 +1,6 @@
 "use client";
 
-import type { InputHTMLAttributes } from "react";
+import { useId, type InputHTMLAttributes } from "react";
 import { cn } from "@/lib/cn";
 
 type Props = InputHTMLAttributes<HTMLInputElement> & {
@@ -10,7 +10,10 @@ type Props = InputHTMLAttributes<HTMLInputElement> & {
 };
 
 export function Input({ label, helperText, error, className, id, ...props }: Props) {
-  const inputId = id ?? label?.toLowerCase().replace(/\s+/g, "-");
+  const autoId = useId();
+  const labelId = label?.toLowerCase().replace(/\s+/g, "-");
+  const fallbackId = `input-${autoId.replace(/:/g, "")}`;
+  const inputId = id ?? labelId ?? fallbackId;
   const describedBy = error ? `${inputId}-error` : helperText ? `${inputId}-help` : undefined;
 
   return (

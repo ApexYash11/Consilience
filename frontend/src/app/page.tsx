@@ -30,7 +30,7 @@ export default function Home() {
               placeholder="What would you like to research?"
               helperText="Minimum 10 characters"
             />
-            <Input label="Budget Limit" placeholder="$0.10" error="Optional: use numeric format" />
+            <Input label="Budget Limit" placeholder="$0.10" helperText="Optional: use numeric format" />
             <div className="flex gap-2">
               <Button size="lg">Start Research</Button>
               <Button size="lg" variant="ghost">

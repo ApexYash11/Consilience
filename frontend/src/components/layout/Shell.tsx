@@ -31,6 +31,7 @@ export function Shell({ children }: ShellProps) {
                 <li key={label}>
                   <button
                     type="button"
+                    aria-current={active ? "page" : undefined}
                     className={cn(
                       "flex w-full items-center gap-2 rounded-[var(--r-md)] px-3 py-2 text-sm",
                       active
