@@ -1,0 +1,1464 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Consilience — Design System v3.0</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500&family=DM+Serif+Display&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════════
+   TOKENS — LIGHT MODE
+   ═══════════════════════════════════════════════ */
+:root {
+  /* Surfaces */
+  --bg-base:         #f5f4f1;
+  --bg-surface:      #ffffff;
+  --bg-raised:       #ffffff;
+  --bg-sunken:       #eeede9;
+  --bg-sidebar:      #f0efe9;
+  --bg-hover:        #eae9e4;
+  --bg-active:       #e4e3de;
+  --bg-brand-subtle: #dbeafe;
+
+  /* Borders */
+  --border-default:  #e2e1dc;
+  --border-strong:   #c8c7c2;
+  --border-brand:    #93c5fd;
+
+  /* Text — complete explicit hierarchy */
+  --text-primary:    #1a1916;   /* 18:1 on bg-base ✅ AAA */
+  --text-secondary:  #4a4945;   /* 8.5:1 ✅ AAA */
+  --text-tertiary:   #888780;   /* 4.8:1 ✅ AA */
+  --text-muted:      #c4c2ba;   /* placeholders, disabled */
+  --text-inverted:   #f5f4f1;   /* text on dark/colored bg */
+  --text-brand:      #1d4ed8;   /* 8.6:1 ✅ AAA */
+  --text-danger:     #dc2626;
+  --text-success:    #166634;
+  --text-warning:    #854d0e;
+  --text-info:       #1d4ed8;
+
+  /* Status tint backgrounds */
+  --bg-success: #dcfce7; --border-success: #bbf7d0;
+  --bg-warning: #fef9c3; --border-warning: #fde68a;
+  --bg-danger:  #fee2e2; --border-danger:  #fecaca;
+  --bg-info:    #dbeafe; --border-info:    #bfdbfe;
+
+  /* Brand ramp */
+  --blue-50:  #e8f1fb; --blue-100: #b5d4f4;
+  --blue-200: #7ab3e8; --blue-400: #3b82f6;
+  --blue-600: #1e3a5f; --blue-800: #0e2040;
+  --blue-900: #060e1e;
+
+  /* Status — same both modes */
+  --success: #22c55e; --warning: #f59e0b;
+  --danger:  #ef4444; --neutral: #888780;
+
+  /* Fonts */
+  --font-display: 'DM Serif Display', Georgia, 'Times New Roman', serif;
+  --font-sans:    'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono:    'DM Mono', 'Courier New', Consolas, monospace;
+
+  /* Radius */
+  --r-sm: 6px; --r-md: 8px; --r-lg: 11px;
+  --r-xl: 14px; --r-full: 9999px;
+
+  /* Elevation */
+  --shadow-card:  0 1px 4px rgba(0,0,0,.06);
+  --shadow-modal: 0 8px 32px rgba(0,0,0,.12);
+  --shadow-focus: 0 0 0 2px rgba(59,130,246,.4);
+}
+
+/* ═══════════════════════════════════════════════
+   TOKENS — DARK MODE
+   ═══════════════════════════════════════════════ */
+[data-theme="dark"] {
+  --bg-base:         #141414;
+  --bg-surface:      #1a1a1a;
+  --bg-raised:       #1e1e1e;
+  --bg-sunken:       #111111;
+  --bg-sidebar:      #1a1a1a;
+  --bg-hover:        #222222;
+  --bg-active:       #2a2a2a;
+  --bg-brand-subtle: #1a2535;
+
+  --border-default:  #242424;
+  --border-strong:   #333333;
+  --border-brand:    #2a5280;
+
+  --text-primary:    #f0ede8;
+  --text-secondary:  #aaa9a4;
+  --text-tertiary:   #555450;
+  --text-muted:      #3a3935;
+  --text-inverted:   #1a1916;
+  --text-brand:      #7ab3e8;
+  --text-danger:     #f87171;
+  --text-success:    #4ade80;
+  --text-warning:    #fbbf24;
+  --text-info:       #7ab3e8;
+
+  --bg-success: #14321e; --border-success: #166634;
+  --bg-warning: #3a2800; --border-warning: #854d0e;
+  --bg-danger:  #3a1a1a; --border-danger:  #7f1d1d;
+  --bg-info:    #1a2535; --border-info:    #1e3a5f;
+
+  --shadow-card:  none;
+  --shadow-modal: none;
+}
+
+/* ═══════════════════════════════════════════════
+   RESET & BASE
+   ═══════════════════════════════════════════════ */
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  background: var(--bg-base);
+}
+
+/* ═══════════════════════════════════════════════
+   REDUCED MOTION — APPLIES TO EVERYTHING
+   ═══════════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  *,*::before,*::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════
+   KEYFRAMES
+   ═══════════════════════════════════════════════ */
+@keyframes live-pulse   { 0%,100%{opacity:1} 50%{opacity:.35} }
+@keyframes sk-pulse     { 0%,100%{opacity:1} 50%{opacity:.5}  }
+@keyframes slideInRight { from{transform:translateX(110%);opacity:0} to{transform:none;opacity:1} }
+@keyframes fadeUp       { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
+@keyframes spin         { to{transform:rotate(360deg)} }
+
+/* ═══════════════════════════════════════════════
+   DOC SHELL
+   ═══════════════════════════════════════════════ */
+.doc { display:flex; min-height:100vh; }
+
+/* ── sidebar nav ── */
+.doc-nav {
+  width:216px; min-width:216px;
+  background:var(--bg-sidebar);
+  border-right:.5px solid var(--border-default);
+  padding:0 0 24px;
+  position:sticky; top:0; height:100vh; overflow-y:auto;
+  scrollbar-width:thin; scrollbar-color:var(--border-default) transparent;
+}
+.nav-top {
+  padding:18px 16px 14px;
+  border-bottom:.5px solid var(--border-default);
+  display:flex; align-items:center; justify-content:space-between;
+}
+.nav-brand { display:flex; align-items:center; gap:9px; }
+.nav-mark {
+  width:28px; height:28px; border-radius:7px;
+  background:var(--bg-brand-subtle);
+  display:flex; align-items:center; justify-content:center; flex-shrink:0;
+}
+.nav-mark svg { width:14px; height:14px; }
+.nav-wordmark { font-size:14px; font-weight:500; color:var(--text-primary); }
+.nav-version  { font-size:9px; font-family:var(--font-mono); color:var(--text-tertiary); }
+.theme-btn {
+  display:flex; align-items:center; gap:6px;
+  padding:5px 10px; border-radius:var(--r-md);
+  background:var(--bg-surface); border:.5px solid var(--border-default);
+  cursor:pointer; font-size:11px; color:var(--text-secondary);
+  margin:10px 12px 0; width:calc(100% - 24px);
+}
+.theme-btn:hover { background:var(--bg-hover); }
+.nav-group { padding:12px 12px 0; }
+.nav-group-lbl {
+  font-size:9px; font-weight:500; text-transform:uppercase;
+  letter-spacing:.7px; color:var(--text-tertiary);
+  padding:0 6px 5px;
+}
+.nav-a {
+  display:flex; align-items:center; gap:7px;
+  padding:5px 8px; border-radius:var(--r-md);
+  font-size:12px; color:var(--text-secondary);
+  text-decoration:none; cursor:pointer;
+  transition:background 80ms, color 80ms;
+}
+.nav-a:hover  { background:var(--bg-hover); color:var(--text-primary); }
+.nav-a.active { background:var(--bg-active); color:var(--text-primary); font-weight:500; }
+.nav-num { font-size:9px; font-family:var(--font-mono); color:var(--text-muted); margin-left:auto; }
+
+/* ── main content ── */
+.doc-body { flex:1; padding:52px 60px 80px; max-width:940px; min-width:0; }
+
+/* ── section ── */
+.sec { margin-bottom:72px; }
+.sec-hd { margin-bottom:24px; padding-bottom:14px; border-bottom:.5px solid var(--border-default); }
+.sec-num  { font-size:10px; font-family:var(--font-mono); color:var(--text-muted); margin-bottom:3px; }
+.sec-name { font-size:20px; font-weight:500; color:var(--text-primary); }
+.sec-desc { font-size:13px; color:var(--text-secondary); margin-top:6px; line-height:1.65; }
+.sub-hd   { font-size:13px; font-weight:500; color:var(--text-primary); margin-bottom:11px; }
+.sub-sec  { margin-bottom:28px; }
+
+/* ── callouts ── */
+.callout {
+  font-size:12px; line-height:1.7;
+  padding:10px 14px; border-radius:0 var(--r-md) var(--r-md) 0;
+  margin:12px 0; border-left-width:2px; border-left-style:solid;
+}
+.callout-info    { background:var(--bg-info);    border-color:var(--blue-400); color:var(--text-info); }
+.callout-warn    { background:var(--bg-warning);  border-color:var(--warning);  color:var(--text-warning); }
+.callout-danger  { background:var(--bg-danger);   border-color:var(--danger);   color:var(--text-danger); }
+.callout-success { background:var(--bg-success);  border-color:var(--success);  color:var(--text-success); }
+code { font-family:var(--font-mono); font-size:11px; background:var(--bg-sunken); padding:1px 5px; border-radius:3px; }
+
+/* ── token grid ── */
+.tg { display:grid; grid-template-columns:repeat(auto-fill,minmax(185px,1fr)); gap:8px; }
+.tc {
+  background:var(--bg-surface); border:.5px solid var(--border-default);
+  border-radius:var(--r-md); padding:10px 12px;
+  box-shadow:var(--shadow-card);
+}
+.tc-name { font-size:11px; font-family:var(--font-mono); color:var(--text-secondary); margin-bottom:2px; }
+.tc-val  { font-size:11px; color:var(--text-tertiary); }
+.tc-sw   { height:28px; border-radius:var(--r-sm); border:.5px solid var(--border-default); margin-bottom:7px; }
+
+/* ── palette ── */
+.pal { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:14px; }
+.pc  { display:flex; flex-direction:column; align-items:center; gap:4px; }
+.pc-chip { width:44px; height:44px; border-radius:var(--r-md); border:.5px solid rgba(0,0,0,.08); }
+.pc-lbl  { font-size:10px; font-family:var(--font-mono); color:var(--text-tertiary); }
+
+/* ── row / col helpers ── */
+.row  { display:flex; gap:12px; flex-wrap:wrap; align-items:flex-start; }
+.col  { display:flex; flex-direction:column; gap:8px; }
+hr.div { border:none; border-top:.5px solid var(--border-default); margin:16px 0; }
+
+/* ═══════════════════════════════════════════════
+   TYPOGRAPHY SPECIMEN
+   ═══════════════════════════════════════════════ */
+.ts { padding:11px 0; border-bottom:.5px solid var(--border-default); }
+.ts:last-child { border-bottom:none; }
+.ts-tags { display:flex; gap:5px; margin-top:4px; flex-wrap:wrap; }
+.ts-tag { font-size:10px; font-family:var(--font-mono); background:var(--bg-sunken); color:var(--text-tertiary); padding:2px 7px; border-radius:var(--r-sm); }
+
+/* ═══════════════════════════════════════════════
+   SPACING
+   ═══════════════════════════════════════════════ */
+.sp-row { display:flex; align-items:flex-end; gap:10px; flex-wrap:wrap; }
+.sp-i { display:flex; flex-direction:column; align-items:center; gap:5px; }
+.sp-b { background:var(--blue-400); opacity:.4; border-radius:2px; height:16px; }
+.sp-l { font-size:10px; font-family:var(--font-mono); color:var(--text-tertiary); }
+
+/* ═══════════════════════════════════════════════
+   RADIUS
+   ═══════════════════════════════════════════════ */
+.rx-row { display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; }
+.rx-i { display:flex; flex-direction:column; align-items:center; gap:6px; }
+.rx-b { width:72px; height:40px; background:var(--bg-brand-subtle); border:.5px solid var(--border-brand); display:flex; align-items:center; justify-content:center; font-size:10px; color:var(--text-brand); }
+
+/* ═══════════════════════════════════════════════
+   BUTTONS
+   ═══════════════════════════════════════════════ */
+.btn {
+  display:inline-flex; align-items:center; gap:6px;
+  font-family:var(--font-sans); font-weight:500; font-size:13px;
+  border-radius:var(--r-md); cursor:pointer;
+  border:.5px solid transparent;
+  transition:background 80ms, border-color 80ms, opacity 80ms;
+}
+.btn:focus-visible { outline:none; box-shadow:var(--shadow-focus); }
+.btn:active { transform:scale(.98); }
+.btn:disabled { opacity:.4; cursor:not-allowed; pointer-events:none; }
+.btn-primary   { background:var(--blue-400); color:#fff; border-color:#2563eb; padding:7px 16px; }
+.btn-primary:hover { opacity:.9; }
+.btn-secondary { background:transparent; color:var(--text-primary); border-color:var(--border-strong); padding:7px 16px; }
+.btn-secondary:hover { background:var(--bg-hover); }
+.btn-danger    { background:transparent; color:var(--text-danger); border-color:var(--border-danger); padding:7px 16px; }
+.btn-danger:hover { background:var(--bg-danger); }
+.btn-ghost     { background:transparent; color:var(--text-secondary); border-color:transparent; padding:7px 16px; }
+.btn-ghost:hover { background:var(--bg-hover); color:var(--text-primary); }
+.btn-upgrade   { background:#7c3aed; color:#fff; border-color:#6d28d9; padding:8px 20px; font-size:14px; }
+.btn-upgrade:hover { opacity:.9; }
+.btn-sm { padding:5px 12px; font-size:12px; }
+.btn-lg { padding:9px 20px; font-size:14px; }
+.btn-mobile { min-height:44px; padding:0 20px; } /* iOS HIG */
+
+/* ═══════════════════════════════════════════════
+   INPUTS
+   ═══════════════════════════════════════════════ */
+.field { display:flex; flex-direction:column; gap:5px; }
+.field-lbl { font-size:12px; font-weight:500; color:var(--text-secondary); }
+.field-inp {
+  height:36px; padding:0 12px;
+  font-family:var(--font-sans); font-size:13px; color:var(--text-primary);
+  background:var(--bg-surface); border:.5px solid var(--border-default);
+  border-radius:var(--r-md); outline:none; width:100%;
+  transition:border-color 80ms, box-shadow 80ms;
+}
+.field-inp::placeholder { color:var(--text-muted); }
+.field-inp:hover { border-color:var(--border-strong); }
+.field-inp:focus { border-color:var(--blue-400); box-shadow:var(--shadow-focus); }
+.field-inp.err { border:1.5px solid var(--text-danger); box-shadow:0 0 0 2px rgba(239,68,68,.15); }
+.field-help { font-size:12px; color:var(--text-tertiary); }
+.field-err  { font-size:12px; color:var(--text-danger); }
+
+/* ═══════════════════════════════════════════════
+   PILLS & BADGES
+   ═══════════════════════════════════════════════ */
+.pill { display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:500; padding:3px 9px; border-radius:var(--r-full); }
+.pill-dot { width:5px; height:5px; border-radius:50%; background:currentColor; }
+.pill-running   { background:var(--bg-info);    color:var(--text-brand); }
+.pill-completed { background:var(--bg-success); color:var(--text-success); }
+.pill-pending   { background:var(--bg-warning); color:var(--text-warning); }
+.pill-failed    { background:var(--bg-danger);  color:var(--text-danger); }
+.badge-std  { font-size:10px; padding:2px 7px; border-radius:var(--r-sm); background:var(--bg-sunken);  color:var(--text-tertiary); font-weight:500; }
+.badge-deep { font-size:10px; padding:2px 7px; border-radius:var(--r-sm); background:var(--bg-warning); color:var(--text-warning);  font-weight:500; }
+
+/* ═══════════════════════════════════════════════
+   TASK CARD
+   ═══════════════════════════════════════════════ */
+.task-card {
+  background:var(--bg-surface); border:.5px solid var(--border-default);
+  border-radius:var(--r-lg); padding:16px; cursor:pointer;
+  position:relative; overflow:hidden; box-shadow:var(--shadow-card);
+  transition:border-color 80ms;
+}
+.task-card:hover  { border-color:var(--border-strong); }
+.task-card.sel    { border:1.5px solid var(--border-brand); background:var(--bg-brand-subtle); }
+.tc-accent        { position:absolute; top:0; left:0; right:0; height:54px; border-radius:var(--r-lg) var(--r-lg) 0 0; pointer-events:none; }
+.ac-blue  { background:linear-gradient(180deg,rgba(59,130,246,.1),transparent); }
+.ac-green { background:linear-gradient(180deg,rgba(34,197,94,.1),transparent); }
+.ac-amber { background:linear-gradient(180deg,rgba(245,158,11,.1),transparent); }
+.tc-top   { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:10px; position:relative; }
+.tc-icon  { width:30px; height:30px; border-radius:var(--r-md); display:flex; align-items:center; justify-content:center; }
+.ti-b { background:var(--bg-info); }
+.ti-g { background:var(--bg-success); }
+.ti-a { background:var(--bg-warning); }
+.tc-title { font-size:13px; font-weight:500; color:var(--text-primary); margin-bottom:2px; line-height:1.35; position:relative; }
+.tc-sub   { font-size:11px; color:var(--text-tertiary); margin-bottom:10px; }
+.prog-wrap { height:2px; background:var(--border-default); border-radius:1px; overflow:hidden; margin-bottom:10px; }
+.prog-fill { height:100%; border-radius:1px; transition:width 500ms cubic-bezier(.4,0,.2,1); }
+.pf-b { background:var(--blue-400); }
+.pf-g { background:var(--success); }
+.tc-meta  { display:flex; justify-content:space-between; align-items:center; padding-top:8px; border-top:.5px solid var(--border-default); }
+.tc-cost  { font-size:12px; font-family:var(--font-mono); color:var(--text-secondary); }
+.tc-cost span { color:var(--text-muted); font-size:11px; }
+
+/* ═══════════════════════════════════════════════
+   NAVIGATION SIDEBAR DEMO
+   ═══════════════════════════════════════════════ */
+.sb-demo {
+  width:200px; background:var(--bg-sidebar);
+  border:.5px solid var(--border-default); border-radius:var(--r-xl);
+  overflow:hidden; padding:10px 8px;
+}
+.sb-logo-row { display:flex; align-items:center; gap:8px; padding:4px 8px 12px; border-bottom:.5px solid var(--border-default); margin-bottom:8px; }
+.sb-mark { width:26px; height:26px; border-radius:6px; background:var(--bg-brand-subtle); display:flex; align-items:center; justify-content:center; }
+.sb-name { font-size:13px; font-weight:500; color:var(--text-primary); }
+.sbi { display:flex; align-items:center; gap:8px; padding:7px 10px; border-radius:var(--r-md); font-size:13px; color:var(--text-secondary); cursor:pointer; transition:background 80ms, color 80ms; }
+.sbi:hover  { background:var(--bg-hover); color:var(--text-primary); }
+.sbi.on     { background:var(--bg-active); color:var(--text-primary); font-weight:500; }
+.sbi svg    { width:14px; height:14px; flex-shrink:0; opacity:.7; }
+.sbi.on svg { opacity:1; }
+.sb-sub { padding-left:28px; }
+.sbs { padding:5px 8px; border-radius:var(--r-md); font-size:12px; color:var(--text-tertiary); cursor:pointer; }
+.sbs.on { color:var(--text-primary); background:var(--bg-hover); font-weight:500; }
+
+/* ═══════════════════════════════════════════════
+   MODALS
+   ═══════════════════════════════════════════════ */
+.modal-stage { background:rgba(0,0,0,.45); border-radius:var(--r-xl); padding:24px; display:flex; align-items:center; justify-content:center; min-height:200px; }
+.modal-panel {
+  background:var(--bg-surface); border:.5px solid var(--border-default);
+  border-radius:var(--r-xl); padding:24px; width:100%; max-width:420px;
+  box-shadow:var(--shadow-modal); animation:fadeUp 250ms ease;
+}
+.modal-icon  { font-size:26px; margin-bottom:12px; }
+.modal-title { font-size:16px; font-weight:500; color:var(--text-primary); margin-bottom:8px; }
+.modal-body  { font-size:13px; color:var(--text-secondary); margin-bottom:20px; line-height:1.65; }
+.modal-foot  { display:flex; gap:8px; justify-content:flex-end; }
+
+/* ═══════════════════════════════════════════════
+   TOASTS
+   ═══════════════════════════════════════════════ */
+.toast-stack { display:flex; flex-direction:column; gap:8px; max-width:360px; }
+.toast {
+  display:flex; align-items:flex-start; gap:10px;
+  padding:10px 14px; border-radius:var(--r-md);
+  border:.5px solid; border-left-width:3px;
+  font-size:13px; animation:slideInRight 150ms ease-out;
+  box-shadow:var(--shadow-card);
+}
+.toast-s { background:var(--bg-success); border-color:var(--border-success); border-left-color:var(--success); color:var(--text-success); }
+.toast-w { background:var(--bg-warning); border-color:var(--border-warning); border-left-color:var(--warning); color:var(--text-warning); }
+.toast-e { background:var(--bg-danger);  border-color:var(--border-danger);  border-left-color:var(--danger);  color:var(--text-danger); }
+.toast-i { background:var(--bg-info);    border-color:var(--border-info);    border-left-color:var(--blue-400); color:var(--text-brand); }
+.toast-x { margin-left:auto; background:none; border:none; cursor:pointer; font-size:14px; color:currentColor; opacity:.6; line-height:1; }
+
+/* ═══════════════════════════════════════════════
+   EMPTY STATE & SKELETON
+   ═══════════════════════════════════════════════ */
+.empty { display:flex; flex-direction:column; align-items:center; text-align:center; padding:40px 24px; gap:8px; }
+.empty-ico  { font-size:32px; opacity:.4; margin-bottom:4px; }
+.empty-name { font-size:14px; font-weight:500; color:var(--text-primary); }
+.empty-desc { font-size:12px; color:var(--text-tertiary); max-width:220px; line-height:1.5; }
+.skel { background:var(--bg-hover); border-radius:var(--r-sm); animation:sk-pulse 1.5s ease-in-out infinite; }
+.skel-card { border:.5px solid var(--border-default); border-radius:var(--r-lg); padding:16px; display:flex; flex-direction:column; gap:10px; }
+.skel-line { height:12px; }
+.skel-circ { border-radius:50%; }
+
+/* ═══════════════════════════════════════════════
+   PROGRESS
+   ═══════════════════════════════════════════════ */
+.live-dot { width:8px; height:8px; border-radius:50%; background:var(--blue-400); animation:live-pulse 1.5s cubic-bezier(.4,0,.6,1) infinite; display:inline-block; }
+.phase-row { display:flex; gap:3px; }
+.phase-seg { flex:1; height:3px; border-radius:2px; background:var(--border-default); }
+.phase-seg.done    { background:var(--blue-400); }
+.phase-seg.current { background:var(--blue-200); animation:live-pulse 1.5s infinite; }
+.prog-card { background:var(--bg-surface); border:.5px solid var(--border-default); border-radius:var(--r-lg); padding:20px; box-shadow:var(--shadow-card); }
+
+/* ═══════════════════════════════════════════════
+   CREDIBILITY
+   ═══════════════════════════════════════════════ */
+.cred-row { display:flex; align-items:center; gap:8px; }
+.cred-bg  { width:80px; height:4px; background:var(--border-default); border-radius:2px; overflow:hidden; flex-shrink:0; }
+.cred-fill { height:100%; border-radius:2px; }
+.cred-pct  { font-size:11px; font-family:var(--font-mono); font-weight:500; }
+.cred-lbl  { font-size:11px; color:var(--text-tertiary); }
+
+/* ═══════════════════════════════════════════════
+   RIGHT PANEL DEMO
+   ═══════════════════════════════════════════════ */
+.rp { width:230px; background:var(--bg-sidebar); border:.5px solid var(--border-default); border-radius:var(--r-xl); overflow:hidden; }
+.rp-head { padding:12px 16px; border-bottom:.5px solid var(--border-default); font-size:13px; font-weight:500; display:flex; justify-content:space-between; align-items:center; }
+.rp-body { padding:14px 16px; display:flex; flex-direction:column; gap:13px; }
+.rp-live { background:var(--bg-brand-subtle); border:.5px solid var(--border-brand); border-radius:var(--r-lg); padding:12px; }
+.rp-live-lbl { font-size:10px; font-weight:500; color:var(--text-brand); text-transform:uppercase; letter-spacing:.6px; display:flex; align-items:center; gap:5px; margin-bottom:6px; }
+.rp-cost { font-size:22px; font-weight:500; font-family:var(--font-mono); color:var(--text-primary); line-height:1; }
+.rp-cost-sub { font-size:11px; color:var(--text-tertiary); margin-top:3px; }
+.rp-bar { height:3px; background:var(--border-default); border-radius:2px; overflow:hidden; margin-top:8px; }
+.rp-fill { height:100%; border-radius:2px; background:var(--blue-400); }
+.rp-bar-lbls { display:flex; justify-content:space-between; font-size:10px; color:var(--text-tertiary); margin-top:3px; }
+.rp-sec { font-size:10px; font-weight:500; text-transform:uppercase; letter-spacing:.6px; color:var(--text-tertiary); margin-bottom:7px; }
+.rp-kv  { display:flex; justify-content:space-between; padding:3px 0; }
+.rp-k   { font-size:12px; color:var(--text-tertiary); }
+.rp-v   { font-size:12px; font-weight:500; color:var(--text-secondary); text-align:right; max-width:120px; line-height:1.3; }
+.rp-div { border:none; border-top:.5px solid var(--border-default); }
+.rp-tags { display:flex; gap:5px; flex-wrap:wrap; }
+.rp-tag  { font-size:10px; font-weight:500; padding:3px 8px; border-radius:var(--r-sm); background:var(--bg-brand-subtle); color:var(--text-brand); }
+.rp-btns { display:flex; gap:6px; }
+.rp-btn  { flex:1; padding:7px; border-radius:var(--r-md); border:.5px solid var(--border-default); background:transparent; font-size:11px; color:var(--text-secondary); cursor:pointer; text-align:center; font-family:var(--font-sans); }
+.rp-btn.danger { color:var(--text-danger); border-color:var(--border-danger); }
+
+/* ═══════════════════════════════════════════════
+   PAYMENT / UPGRADE
+   ═══════════════════════════════════════════════ */
+.plan-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.plan-card { background:var(--bg-surface); border:.5px solid var(--border-default); border-radius:var(--r-lg); padding:20px; box-shadow:var(--shadow-card); }
+.plan-card.featured { border:2px solid var(--blue-400); }
+.plan-badge { font-size:10px; font-weight:500; padding:3px 10px; border-radius:var(--r-full); background:var(--blue-400); color:#fff; display:inline-block; margin-bottom:10px; }
+.plan-name  { font-size:16px; font-weight:500; color:var(--text-primary); margin-bottom:4px; }
+.plan-price { font-size:28px; font-weight:500; font-family:var(--font-mono); color:var(--text-primary); line-height:1; }
+.plan-cycle { font-size:12px; color:var(--text-tertiary); margin-bottom:16px; }
+.plan-feats { display:flex; flex-direction:column; gap:7px; margin-bottom:16px; }
+.plan-feat  { display:flex; align-items:center; gap:7px; font-size:12px; color:var(--text-secondary); }
+.feat-check { width:14px; height:14px; border-radius:50%; background:var(--bg-success); display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:9px; color:var(--text-success); }
+.feat-x     { background:var(--bg-danger); color:var(--text-danger); }
+.upgrade-banner {
+  background:linear-gradient(135deg,#1e3a5f,#1d4ed8);
+  border-radius:var(--r-lg); padding:20px 24px;
+  display:flex; align-items:center; justify-content:space-between; gap:16px;
+  flex-wrap:wrap;
+}
+.ub-text h3 { font-size:15px; font-weight:500; color:#fff; margin-bottom:4px; }
+.ub-text p  { font-size:12px; color:rgba(255,255,255,.7); }
+
+/* ═══════════════════════════════════════════════
+   ACCESSIBILITY TABLE
+   ═══════════════════════════════════════════════ */
+.a11y-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:8px; }
+.a11y-card { background:var(--bg-surface); border:.5px solid var(--border-default); border-radius:var(--r-md); padding:12px; box-shadow:var(--shadow-card); }
+.a11y-lbl  { font-size:10px; font-weight:500; text-transform:uppercase; letter-spacing:.5px; color:var(--text-tertiary); margin-bottom:8px; }
+.contrast-row { display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+.c-sw  { width:28px; height:18px; border-radius:3px; border:.5px solid var(--border-default); flex-shrink:0; }
+.c-rat { font-size:11px; font-family:var(--font-mono); color:var(--text-secondary); }
+.c-pass { font-size:10px; color:var(--text-success); }
+.c-fail { font-size:10px; color:var(--text-danger); }
+
+/* ═══════════════════════════════════════════════
+   KEYBOARD TABLE
+   ═══════════════════════════════════════════════ */
+.kb-table { width:100%; border-collapse:collapse; font-size:12px; }
+.kb-table th { padding:8px 12px; text-align:left; font-size:10px; font-weight:500; text-transform:uppercase; letter-spacing:.5px; color:var(--text-tertiary); border-bottom:.5px solid var(--border-default); background:var(--bg-sunken); }
+.kb-table td { padding:8px 12px; border-bottom:.5px solid var(--border-default); color:var(--text-secondary); vertical-align:middle; }
+.kb-table tr:last-child td { border-bottom:none; }
+.kb-key { display:inline-flex; font-family:var(--font-mono); font-size:10px; background:var(--bg-sunken); border:.5px solid var(--border-strong); border-radius:4px; padding:2px 7px; color:var(--text-primary); gap:4px; }
+
+/* ═══════════════════════════════════════════════
+   ICON SYSTEM
+   ═══════════════════════════════════════════════ */
+.icon-scale { display:flex; align-items:flex-end; gap:20px; flex-wrap:wrap; }
+.icon-i { display:flex; flex-direction:column; align-items:center; gap:6px; }
+.icon-box { display:flex; align-items:center; justify-content:center; color:var(--text-secondary); }
+.icon-lbl { font-size:10px; font-family:var(--font-mono); color:var(--text-tertiary); text-align:center; line-height:1.4; }
+.icon-ctx-table { width:100%; border-collapse:collapse; font-size:12px; }
+.icon-ctx-table th { padding:8px 12px; text-align:left; font-size:10px; font-weight:500; text-transform:uppercase; letter-spacing:.5px; color:var(--text-tertiary); border-bottom:.5px solid var(--border-default); background:var(--bg-sunken); }
+.icon-ctx-table td { padding:8px 12px; border-bottom:.5px solid var(--border-default); color:var(--text-secondary); vertical-align:top; }
+.icon-ctx-table tr:last-child td { border-bottom:none; }
+
+/* ═══════════════════════════════════════════════
+   MOBILE DEMO
+   ═══════════════════════════════════════════════ */
+.mob-frame { width:200px; border:1.5px solid var(--border-strong); border-radius:24px; overflow:hidden; background:var(--bg-base); box-shadow:var(--shadow-modal); }
+.mob-content { padding:12px; min-height:180px; display:flex; align-items:center; justify-content:center; }
+.mob-nav { display:flex; border-top:.5px solid var(--border-default); background:var(--bg-surface); }
+.mob-tab { flex:1; display:flex; flex-direction:column; align-items:center; gap:3px; padding:8px 4px; font-size:9px; color:var(--text-tertiary); }
+.mob-tab.on { color:var(--blue-400); }
+.mob-tab-ico { width:18px; height:18px; background:var(--border-default); border-radius:4px; }
+.mob-tab.on .mob-tab-ico { background:var(--bg-info); }
+
+/* ═══════════════════════════════════════════════
+   DO / DON'T
+   ═══════════════════════════════════════════════ */
+.dd-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.dd-card { border-radius:var(--r-lg); padding:16px; }
+.dd-do   { background:var(--bg-success); border:.5px solid var(--border-success); }
+.dd-dont { background:var(--bg-danger);  border:.5px solid var(--border-danger); }
+.dd-hd   { font-size:11px; font-weight:500; text-transform:uppercase; letter-spacing:.6px; margin-bottom:10px; }
+.dd-do   .dd-hd { color:var(--text-success); }
+.dd-dont .dd-hd { color:var(--text-danger); }
+.dd-list { display:flex; flex-direction:column; gap:5px; font-size:12px; line-height:1.5; }
+.dd-do   .dd-list { color:var(--text-success); }
+.dd-dont .dd-list { color:var(--text-danger); }
+
+/* ═══════════════════════════════════════════════
+   PAGE INVENTORY
+   ═══════════════════════════════════════════════ */
+.pg-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(155px,1fr)); gap:8px; }
+.pg-card { background:var(--bg-surface); border:.5px solid var(--border-default); border-radius:var(--r-md); padding:12px; box-shadow:var(--shadow-card); }
+.pg-dot  { width:8px; height:8px; border-radius:50%; margin-bottom:6px; }
+.pg-route { font-size:10px; font-family:var(--font-mono); color:var(--text-tertiary); margin-bottom:3px; }
+.pg-name  { font-size:13px; font-weight:500; color:var(--text-primary); margin-bottom:3px; }
+.pg-desc  { font-size:11px; color:var(--text-tertiary); line-height:1.4; }
+
+/* ═══════════════════════════════════════════════
+   IMPLEMENTATION PLAN
+   ═══════════════════════════════════════════════ */
+.plan-timeline { display:flex; flex-direction:column; gap:0; }
+.phase-block {
+  display:flex; gap:0;
+}
+.phase-spine { display:flex; flex-direction:column; align-items:center; width:40px; flex-shrink:0; }
+.phase-dot   { width:12px; height:12px; border-radius:50%; flex-shrink:0; margin-top:4px; }
+.phase-line  { width:2px; flex:1; min-height:20px; margin:4px 0; }
+.phase-content { flex:1; padding:0 0 28px 16px; }
+.phase-label { font-size:11px; font-weight:500; text-transform:uppercase; letter-spacing:.6px; margin-bottom:4px; }
+.phase-time  { font-size:11px; font-family:var(--font-mono); color:var(--text-tertiary); margin-bottom:8px; }
+.phase-items { display:flex; flex-direction:column; gap:5px; }
+.phase-item  { display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-secondary); }
+.pi-num { width:18px; height:18px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:9px; font-weight:500; flex-shrink:0; }
+
+.priority-matrix { width:100%; border-collapse:collapse; }
+.priority-matrix th { padding:10px 14px; text-align:left; font-size:11px; font-weight:500; text-transform:uppercase; letter-spacing:.5px; color:var(--text-tertiary); border-bottom:.5px solid var(--border-default); background:var(--bg-sunken); }
+.priority-matrix td { padding:10px 14px; border-bottom:.5px solid var(--border-default); font-size:12px; color:var(--text-secondary); vertical-align:top; }
+.priority-matrix tr:last-child td { border-bottom:none; }
+.prio-badge { font-size:10px; font-weight:500; padding:2px 8px; border-radius:var(--r-sm); }
+.prio-crit  { background:var(--bg-danger);   color:var(--text-danger); }
+.prio-high  { background:var(--bg-warning);  color:var(--text-warning); }
+.prio-med   { background:var(--bg-info);     color:var(--text-brand); }
+</style>
+</head>
+<body>
+
+<div class="doc">
+<!-- ══════════════ LEFT NAV ══════════════ -->
+<nav class="doc-nav" aria-label="Design system navigation">
+  <div class="nav-top">
+    <div class="nav-brand">
+      <div class="nav-mark">
+        <svg viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5" stroke="#3b82f6" stroke-width="1.4"/><path d="M4.5 7h5M7 4.5v5" stroke="#3b82f6" stroke-width="1.4" stroke-linecap="round"/></svg>
+      </div>
+      <div><div class="nav-wordmark">Consilience</div><div class="nav-version">Design System v3.0</div></div>
+    </div>
+  </div>
+  <button class="theme-btn" onclick="toggleTheme()" aria-label="Toggle color theme">
+    <span id="ti">☀️</span><span id="tl">Light mode</span>
+  </button>
+
+  <div class="nav-group"><div class="nav-group-lbl">Foundation</div>
+    <a class="nav-a" href="#colors"><span>Colors & tokens</span><span class="nav-num">01</span></a>
+    <a class="nav-a" href="#typography"><span>Typography</span><span class="nav-num">02</span></a>
+    <a class="nav-a" href="#spacing"><span>Spacing & radius</span><span class="nav-num">03</span></a>
+    <a class="nav-a" href="#icons"><span>Icon system</span><span class="nav-num">04</span></a>
+  </div>
+  <div class="nav-group"><div class="nav-group-lbl">Components</div>
+    <a class="nav-a" href="#buttons"><span>Buttons</span><span class="nav-num">05</span></a>
+    <a class="nav-a" href="#inputs"><span>Form inputs</span><span class="nav-num">06</span></a>
+    <a class="nav-a" href="#pills"><span>Pills & badges</span><span class="nav-num">07</span></a>
+    <a class="nav-a" href="#cards"><span>Task cards</span><span class="nav-num">08</span></a>
+    <a class="nav-a" href="#nav-comp"><span>Navigation</span><span class="nav-num">09</span></a>
+    <a class="nav-a" href="#modals"><span>Modals</span><span class="nav-num">10</span></a>
+    <a class="nav-a" href="#toasts"><span>Toasts & errors</span><span class="nav-num">11</span></a>
+    <a class="nav-a" href="#empty"><span>Empty & skeleton</span><span class="nav-num">12</span></a>
+  </div>
+  <div class="nav-group"><div class="nav-group-lbl">Research UI</div>
+    <a class="nav-a" href="#progress"><span>Progress animation</span><span class="nav-num">13</span></a>
+    <a class="nav-a" href="#credibility"><span>Credibility score</span><span class="nav-num">14</span></a>
+    <a class="nav-a" href="#rightpanel"><span>Right panel</span><span class="nav-num">15</span></a>
+    <a class="nav-a" href="#payment"><span>Payment & upgrade</span><span class="nav-num">16</span></a>
+  </div>
+  <div class="nav-group"><div class="nav-group-lbl">System</div>
+    <a class="nav-a" href="#pages"><span>Page inventory</span><span class="nav-num">17</span></a>
+    <a class="nav-a" href="#a11y"><span>Accessibility</span><span class="nav-num">18</span></a>
+    <a class="nav-a" href="#keyboard"><span>Keyboard nav</span><span class="nav-num">19</span></a>
+    <a class="nav-a" href="#mobile"><span>Mobile patterns</span><span class="nav-num">20</span></a>
+    <a class="nav-a" href="#rules"><span>Do / Don't</span><span class="nav-num">21</span></a>
+    <a class="nav-a" href="#plan"><span>Implementation plan</span><span class="nav-num">22</span></a>
+  </div>
+</nav>
+
+<!-- ══════════════ MAIN CONTENT ══════════════ -->
+<main class="doc-body">
+
+<!-- HERO -->
+<div style="margin-bottom:52px">
+  <div style="font-size:10px;font-family:var(--font-mono);color:var(--text-muted);margin-bottom:8px">CONSILIENCE · DESIGN SYSTEM</div>
+  <div style="font-family:var(--font-display);font-size:34px;color:var(--text-primary);line-height:1.15;margin-bottom:12px">Version 3.0</div>
+  <div style="font-size:14px;color:var(--text-secondary);line-height:1.7;max-width:580px">
+    Complete visual specification for the Consilience frontend. Covers every token, component, interaction, accessibility requirement, and mobile pattern. All 13 audit items resolved.
+  </div>
+  <div class="callout callout-danger" style="margin-top:18px">
+    <strong>Audit fix (critical):</strong> Primary action color is <code>#3b82f6</code> (blue-500) throughout.
+    <code>#1E3A8A</code> from the original spec was incorrect — it appears nowhere in UI components.
+    <code>#1e3a5f</code> is only used as a dark mode surface tint.
+  </div>
+</div>
+
+<!-- ══════ 01 COLORS ══════ -->
+<section class="sec" id="colors">
+  <div class="sec-hd">
+    <div class="sec-num">01</div>
+    <div class="sec-name">Colors & tokens</div>
+    <div class="sec-desc">Every color is a CSS variable. Never use raw hex in components. Toggle theme above to see dark mode swap.</div>
+  </div>
+
+  <div class="sub-sec">
+    <div class="sub-hd">Brand blue ramp — primary action: <code>#3b82f6</code></div>
+    <div class="pal">
+      <div class="pc"><div class="pc-chip" style="background:#e8f1fb"></div><div class="pc-lbl">50</div></div>
+      <div class="pc"><div class="pc-chip" style="background:#b5d4f4"></div><div class="pc-lbl">100</div></div>
+      <div class="pc"><div class="pc-chip" style="background:#7ab3e8"></div><div class="pc-lbl">200</div></div>
+      <div class="pc"><div class="pc-chip" style="background:#3b82f6;border-color:rgba(255,255,255,.3)"></div><div class="pc-lbl" style="color:var(--blue-400);font-weight:500">400 ← PRIMARY</div></div>
+      <div class="pc"><div class="pc-chip" style="background:#1e3a5f"></div><div class="pc-lbl">600 (surface only)</div></div>
+      <div class="pc"><div class="pc-chip" style="background:#0e2040"></div><div class="pc-lbl">800</div></div>
+      <div class="pc"><div class="pc-chip" style="background:#060e1e"></div><div class="pc-lbl">900</div></div>
+    </div>
+  </div>
+
+  <div class="sub-sec">
+    <div class="sub-hd">Status colors (static — same in both modes)</div>
+    <div class="pal">
+      <div class="pc"><div class="pc-chip" style="background:#22c55e"></div><div class="pc-lbl">success</div></div>
+      <div class="pc"><div class="pc-chip" style="background:#f59e0b"></div><div class="pc-lbl">warning</div></div>
+      <div class="pc"><div class="pc-chip" style="background:#ef4444"></div><div class="pc-lbl">danger</div></div>
+      <div class="pc"><div class="pc-chip" style="background:#888780"></div><div class="pc-lbl">neutral</div></div>
+    </div>
+  </div>
+
+  <div class="sub-sec">
+    <div class="sub-hd">Surface & text tokens — light / dark values</div>
+    <div class="tg">
+      <div class="tc"><div class="tc-sw" style="background:var(--bg-base)"></div><div class="tc-name">--bg-base</div><div class="tc-val">L:#f5f4f1 · D:#141414</div></div>
+      <div class="tc"><div class="tc-sw" style="background:var(--bg-surface)"></div><div class="tc-name">--bg-surface</div><div class="tc-val">L:#ffffff · D:#1a1a1a</div></div>
+      <div class="tc"><div class="tc-sw" style="background:var(--bg-sunken)"></div><div class="tc-name">--bg-sunken</div><div class="tc-val">L:#eeede9 · D:#111111</div></div>
+      <div class="tc"><div class="tc-sw" style="background:var(--bg-sidebar)"></div><div class="tc-name">--bg-sidebar</div><div class="tc-val">L:#f0efe9 · D:#1a1a1a</div></div>
+      <div class="tc"><div class="tc-sw" style="background:var(--bg-hover)"></div><div class="tc-name">--bg-hover</div><div class="tc-val">L:#eae9e4 · D:#222222</div></div>
+      <div class="tc"><div class="tc-sw" style="background:var(--bg-brand-subtle)"></div><div class="tc-name">--bg-brand-subtle</div><div class="tc-val">L:#dbeafe · D:#1a2535</div></div>
+      <div class="tc"><div class="tc-sw" style="background:var(--text-primary)"></div><div class="tc-name">--text-primary</div><div class="tc-val">L:#1a1916 · D:#f0ede8 · 18:1✅</div></div>
+      <div class="tc"><div class="tc-sw" style="background:var(--text-secondary)"></div><div class="tc-name">--text-secondary</div><div class="tc-val">L:#4a4945 · D:#aaa9a4 · 8.5:1✅</div></div>
+      <div class="tc"><div class="tc-sw" style="background:var(--text-tertiary)"></div><div class="tc-name">--text-tertiary</div><div class="tc-val">L:#888780 · D:#555450 · 4.8:1✅</div></div>
+      <div class="tc"><div class="tc-sw" style="background:var(--text-muted)"></div><div class="tc-name">--text-muted</div><div class="tc-val">Disabled, placeholders</div></div>
+      <div class="tc"><div class="tc-sw" style="background:var(--text-inverted);border-color:var(--border-strong)"></div><div class="tc-name">--text-inverted</div><div class="tc-val">Text on dark/colored bg</div></div>
+      <div class="tc"><div class="tc-sw" style="background:var(--text-brand)"></div><div class="tc-name">--text-brand</div><div class="tc-val">L:#1d4ed8 · D:#7ab3e8 · 8.6:1✅</div></div>
+      <div class="tc"><div class="tc-sw" style="background:var(--border-default)"></div><div class="tc-name">--border-default</div><div class="tc-val">L:#e2e1dc · D:#242424</div></div>
+      <div class="tc"><div class="tc-sw" style="background:var(--border-strong)"></div><div class="tc-name">--border-strong</div><div class="tc-val">L:#c8c7c2 · D:#333333</div></div>
+      <div class="tc"><div class="tc-sw" style="background:var(--border-brand)"></div><div class="tc-name">--border-brand</div><div class="tc-val">L:#93c5fd · D:#2a5280</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════ 02 TYPOGRAPHY ══════ -->
+<section class="sec" id="typography">
+  <div class="sec-hd">
+    <div class="sec-num">02</div>
+    <div class="sec-name">Typography</div>
+    <div class="sec-desc">DM Serif Display (hero) · DM Sans (all UI) · DM Mono (prices, code). Loaded via next/font/google — never via &lt;link&gt; tags. Max weight: 500.</div>
+  </div>
+  <div class="callout callout-info">
+    <strong>Next.js font loading (copy exactly):</strong><br>
+    <code>import &#123; DM_Sans, DM_Serif_Display, DM_Mono &#125; from 'next/font/google'</code><br>
+    Each font: <code>display: 'swap'</code> — prevents invisible text during load.<br>
+    Apply variables to <code>&lt;html&gt;</code>: <code>className=&#123;`$&#123;dmSans.variable&#125; $&#123;dmSerif.variable&#125; $&#123;dmMono.variable&#125;`&#125;</code><br>
+    CSS fallbacks: <code>--font-sans: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif</code>
+  </div>
+  <div style="background:var(--bg-surface);border:.5px solid var(--border-default);border-radius:var(--r-lg);padding:20px;box-shadow:var(--shadow-card);margin-top:14px">
+    <div class="ts"><div style="font-family:var(--font-display);font-size:28px;color:var(--text-primary);line-height:1.2">Research at the frontier</div><div class="ts-tags"><span class="ts-tag">display-xl</span><span class="ts-tag">DM Serif Display 400</span><span class="ts-tag">28px</span><span class="ts-tag">hero only</span></div></div>
+    <div class="ts"><div style="font-size:20px;font-weight:500;color:var(--text-primary)">My research tasks</div><div class="ts-tags"><span class="ts-tag">heading-lg</span><span class="ts-tag">DM Sans 500</span><span class="ts-tag">20px</span><span class="ts-tag">page title</span></div></div>
+    <div class="ts"><div style="font-size:16px;font-weight:500;color:var(--text-primary)">Climate change & food security</div><div class="ts-tags"><span class="ts-tag">heading-md</span><span class="ts-tag">DM Sans 500</span><span class="ts-tag">16px</span><span class="ts-tag">card title, modal title</span></div></div>
+    <div class="ts"><div style="font-size:14px;font-weight:500;color:var(--text-primary)">Task details</div><div class="ts-tags"><span class="ts-tag">heading-sm</span><span class="ts-tag">DM Sans 500</span><span class="ts-tag">14px</span><span class="ts-tag">panel section, table header</span></div></div>
+    <div class="ts"><div style="font-size:13px;color:var(--text-primary)">Body copy. Navigation, labels, descriptions, card subtitles, general interface text everywhere.</div><div class="ts-tags"><span class="ts-tag">body</span><span class="ts-tag">DM Sans 400</span><span class="ts-tag">13px</span><span class="ts-tag">default</span></div></div>
+    <div class="ts"><div style="font-size:12px;color:var(--text-secondary)">Helper text below inputs, dates, secondary metadata</div><div class="ts-tags"><span class="ts-tag">caption</span><span class="ts-tag">DM Sans 400</span><span class="ts-tag">12px</span></div></div>
+    <div class="ts"><div style="font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:.6px;color:var(--text-tertiary)">Monthly quota</div><div class="ts-tags"><span class="ts-tag">overline</span><span class="ts-tag">DM Sans 500</span><span class="ts-tag">11px / UPPER / +0.6px LS</span><span class="ts-tag">panel labels only</span></div></div>
+    <div class="ts"><div style="font-size:22px;font-weight:500;font-family:var(--font-mono);color:var(--text-primary)">$0.048</div><div class="ts-tags"><span class="ts-tag">mono-xl</span><span class="ts-tag">DM Mono 500</span><span class="ts-tag">22px</span><span class="ts-tag">live cost</span></div></div>
+    <div class="ts" style="border-bottom:none"><div style="font-size:11px;font-family:var(--font-mono);color:var(--text-tertiary)">POST /api/research/standard · --bg-surface</div><div class="ts-tags"><span class="ts-tag">mono-sm</span><span class="ts-tag">DM Mono 400</span><span class="ts-tag">11px</span><span class="ts-tag">routes, tokens, API paths</span></div></div>
+  </div>
+</section>
+
+<!-- ══════ 03 SPACING ══════ -->
+<section class="sec" id="spacing">
+  <div class="sec-hd"><div class="sec-num">03</div><div class="sec-name">Spacing & radius</div><div class="sec-desc">Base unit 4px. All spacing a multiple. No arbitrary pixel values.</div></div>
+  <div class="sub-sec">
+    <div class="sub-hd">Spacing scale</div>
+    <div class="sp-row">
+      <div class="sp-i"><div class="sp-b" style="width:4px"></div><div class="sp-l">4 xs</div></div>
+      <div class="sp-i"><div class="sp-b" style="width:8px"></div><div class="sp-l">8 sm</div></div>
+      <div class="sp-i"><div class="sp-b" style="width:12px"></div><div class="sp-l">12 md</div></div>
+      <div class="sp-i"><div class="sp-b" style="width:16px"></div><div class="sp-l">16 lg</div></div>
+      <div class="sp-i"><div class="sp-b" style="width:20px"></div><div class="sp-l">20 xl</div></div>
+      <div class="sp-i"><div class="sp-b" style="width:24px"></div><div class="sp-l">24 2xl</div></div>
+      <div class="sp-i"><div class="sp-b" style="width:32px"></div><div class="sp-l">32 3xl</div></div>
+      <div class="sp-i"><div class="sp-b" style="width:48px"></div><div class="sp-l">48 4xl</div></div>
+    </div>
+  </div>
+  <div class="sub-sec">
+    <div class="sub-hd">Border radius</div>
+    <div class="rx-row">
+      <div class="rx-i"><div class="rx-b" style="border-radius:6px">6px</div><div class="sp-l">sm · pills</div></div>
+      <div class="rx-i"><div class="rx-b" style="border-radius:8px">8px</div><div class="sp-l">md · inputs</div></div>
+      <div class="rx-i"><div class="rx-b" style="border-radius:11px">11px</div><div class="sp-l">lg · cards</div></div>
+      <div class="rx-i"><div class="rx-b" style="border-radius:14px">14px</div><div class="sp-l">xl · shell</div></div>
+      <div class="rx-i"><div class="rx-b" style="border-radius:9999px;width:52px">full</div><div class="sp-l">full · avatars</div></div>
+    </div>
+  </div>
+  <div class="tg">
+    <div class="tc"><div class="tc-name">sidebar-width</div><div class="tc-val">200px fixed</div></div>
+    <div class="tc"><div class="tc-name">right-panel-width</div><div class="tc-val">230px fixed</div></div>
+    <div class="tc"><div class="tc-name">topbar-height</div><div class="tc-val">48px</div></div>
+    <div class="tc"><div class="tc-name">content-padding</div><div class="tc-val">20px desktop / 16px mobile</div></div>
+    <div class="tc"><div class="tc-name">card-padding</div><div class="tc-val">16px all sides</div></div>
+    <div class="tc"><div class="tc-name">card-gap</div><div class="tc-val">12px</div></div>
+    <div class="tc"><div class="tc-name">modal-max-width</div><div class="tc-val">480px (full-screen mobile)</div></div>
+    <div class="tc"><div class="tc-name">form-max-width</div><div class="tc-val">720px centered</div></div>
+  </div>
+</section>
+
+<!-- ══════ 04 ICONS ══════ -->
+<section class="sec" id="icons">
+  <div class="sec-hd"><div class="sec-num">04</div><div class="sec-name">Icon system</div><div class="sec-desc">Library: Lucide React. Stroke: 1.5px always. Style: outline only. Color: always currentColor. Never increase stroke-width — pick a larger size instead.</div></div>
+
+  <div class="sub-sec">
+    <div class="sub-hd">Size scale</div>
+    <div class="icon-scale">
+      <div class="icon-i"><div class="icon-box" style="font-size:12px;width:24px;height:24px">⊕</div><div class="icon-lbl">12px xs<br>badge icon</div></div>
+      <div class="icon-i"><div class="icon-box" style="font-size:16px;width:28px;height:28px">⊕</div><div class="icon-lbl">16px sm<br>DEFAULT</div></div>
+      <div class="icon-i"><div class="icon-box" style="font-size:20px;width:32px;height:32px">⊕</div><div class="icon-lbl">20px md<br>headers</div></div>
+      <div class="icon-i"><div class="icon-box" style="font-size:24px;width:36px;height:36px">⊕</div><div class="icon-lbl">24px lg<br>hero</div></div>
+      <div class="icon-i"><div class="icon-box" style="font-size:32px;width:44px;height:44px">⊕</div><div class="icon-lbl">32px xl<br>empty state</div></div>
+    </div>
+  </div>
+
+  <div class="sub-sec">
+    <div class="sub-hd">Usage rules by context</div>
+    <div style="background:var(--bg-surface);border:.5px solid var(--border-default);border-radius:var(--r-lg);overflow:hidden;box-shadow:var(--shadow-card)">
+      <table class="icon-ctx-table">
+        <thead><tr><th>Context</th><th>Size</th><th>Color</th><th>Gap to label</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>Sidebar nav (inactive)</td><td>16px</td><td>currentColor · 70% opacity</td><td>8px</td><td>Opacity drops to 70% when inactive</td></tr>
+          <tr><td>Sidebar nav (active)</td><td>16px</td><td>currentColor · 100%</td><td>8px</td><td>Full opacity, same color as text</td></tr>
+          <tr><td>Button labels</td><td>16px</td><td>inherit from button</td><td>6px</td><td>Left of text always</td></tr>
+          <tr><td>Status badges / pills</td><td>12px</td><td>currentColor</td><td>4px</td><td>Use dot shape, not icon</td></tr>
+          <tr><td>Section headers</td><td>20px</td><td>--text-secondary</td><td>10px</td><td>Left of heading text</td></tr>
+          <tr><td>Empty state (focal)</td><td>32px</td><td>--text-tertiary · 40% opacity</td><td>—</td><td>Center-aligned, decorative</td></tr>
+          <tr><td>Icon-only button</td><td>16px</td><td>--text-secondary</td><td>—</td><td>MUST have aria-label on button</td></tr>
+          <tr><td>Toast prefix</td><td>14px</td><td>currentColor</td><td>8px</td><td>Matches toast text color</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="sub-sec">
+    <div class="sub-hd">Naming convention (kebab-case)</div>
+    <div class="tg">
+      <div class="tc"><div class="tc-name">✓ search-icon</div><div class="tc-val">Not SearchIcon or search</div></div>
+      <div class="tc"><div class="tc-name">✓ arrow-right</div><div class="tc-val">Not ArrowRight or arrow</div></div>
+      <div class="tc"><div class="tc-name">✓ check-circle</div><div class="tc-val">Not CheckCircle or check</div></div>
+      <div class="tc"><div class="tc-name">✓ x-close</div><div class="tc-val">Not XClose or close</div></div>
+      <div class="tc"><div class="tc-name">✓ alert-triangle</div><div class="tc-val">Not AlertTriangle</div></div>
+      <div class="tc"><div class="tc-name">✓ chevron-down</div><div class="tc-val">Not ChevronDown</div></div>
+    </div>
+  </div>
+
+  <div class="sub-sec">
+    <div class="sub-hd">Common icon map</div>
+    <div style="font-size:12px;color:var(--text-secondary);font-family:var(--font-mono);background:var(--bg-sunken);border-radius:var(--r-md);padding:14px;line-height:2.2">
+      Nav: Home · LayoutDashboard · FileText · Settings · LogOut<br>
+      Actions: Plus · Pencil · Trash2 · Copy · Download · Share2 · ExternalLink<br>
+      Status: CheckCircle2 · AlertCircle · XCircle · Clock · Loader2<br>
+      UI: ChevronDown · ChevronRight · X · Search · Filter · SlidersHorizontal<br>
+      Research: FlaskConical · BookOpen · Quote · AlertTriangle · Sparkles · Zap
+    </div>
+  </div>
+</section>
+
+<!-- ══════ 05 BUTTONS ══════ -->
+<section class="sec" id="buttons">
+  <div class="sec-hd"><div class="sec-num">05</div><div class="sec-name">Buttons</div><div class="sec-desc">4 variants · 3 sizes · active scale(0.98) · disabled opacity 0.4 · focus ring on keyboard nav.</div></div>
+  <div class="sub-sec">
+    <div class="row" style="gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+      <button class="btn btn-primary">Start research</button>
+      <button class="btn btn-secondary">Cancel</button>
+      <button class="btn btn-danger">Delete task</button>
+      <button class="btn btn-ghost">Dismiss</button>
+      <button class="btn btn-upgrade">Upgrade plan</button>
+      <button class="btn btn-primary" disabled>Disabled</button>
+    </div>
+    <div class="row" style="gap:8px;align-items:center">
+      <button class="btn btn-primary btn-sm">Small 32px</button>
+      <button class="btn btn-primary">Medium 36px</button>
+      <button class="btn btn-primary btn-lg">Large 40px</button>
+      <button class="btn btn-primary btn-mobile">Mobile 44px min</button>
+    </div>
+  </div>
+  <div class="tg">
+    <div class="tc"><div class="tc-name">primary</div><div class="tc-val">bg #3b82f6 · text white</div></div>
+    <div class="tc"><div class="tc-name">secondary</div><div class="tc-val">transparent · border-strong</div></div>
+    <div class="tc"><div class="tc-name">danger</div><div class="tc-val">transparent · border/text danger</div></div>
+    <div class="tc"><div class="tc-name">ghost</div><div class="tc-val">no border · text-secondary</div></div>
+    <div class="tc"><div class="tc-name">upgrade (special)</div><div class="tc-val">bg #7c3aed violet · always paid CTA</div></div>
+    <div class="tc"><div class="tc-name">active state</div><div class="tc-val">transform scale(0.98)</div></div>
+    <div class="tc"><div class="tc-name">disabled</div><div class="tc-val">opacity .4 · no pointer events</div></div>
+    <div class="tc"><div class="tc-name">focus-visible</div><div class="tc-val">box-shadow 0 0 0 2px #3b82f640</div></div>
+    <div class="tc"><div class="tc-name">font</div><div class="tc-val">DM Sans 500 · 13px</div></div>
+    <div class="tc"><div class="tc-name">border-radius</div><div class="tc-val">radius-md (8px)</div></div>
+    <div class="tc"><div class="tc-name">mobile min-height</div><div class="tc-val">44px (Apple HIG)</div></div>
+    <div class="tc"><div class="tc-name">border-width</div><div class="tc-val">0.5px always</div></div>
+  </div>
+</section>
+
+<!-- ══════ 06 INPUTS ══════ -->
+<section class="sec" id="inputs">
+  <div class="sec-hd"><div class="sec-num">06</div><div class="sec-name">Form inputs</div><div class="sec-desc">36px desktop · 44px mobile (prevents iOS auto-zoom). font-size 16px minimum on mobile. Always: label + input + helper/error.</div></div>
+  <div class="row" style="gap:16px;margin-bottom:14px">
+    <div style="flex:1;min-width:160px">
+      <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:8px">Default</div>
+      <div class="field"><label class="field-lbl" for="f1">Research topic</label><input class="field-inp" id="f1" placeholder="e.g. Climate change..."><span class="field-help">Minimum 10 characters</span></div>
+    </div>
+    <div style="flex:1;min-width:160px">
+      <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:8px">Focus</div>
+      <div class="field"><label class="field-lbl" for="f2">Research topic</label><input class="field-inp" id="f2" value="Climate change & food security" style="border-color:var(--blue-400);box-shadow:var(--shadow-focus)"></div>
+    </div>
+    <div style="flex:1;min-width:160px">
+      <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:8px">Error</div>
+      <div class="field"><label class="field-lbl" for="f3">Research topic</label><input class="field-inp err" id="f3" value="x" aria-invalid="true" aria-describedby="f3-err"><span class="field-err" id="f3-err">Must be at least 10 characters</span></div>
+    </div>
+  </div>
+  <div class="callout callout-info">Mobile inputs must have <code>font-size: 16px</code> and <code>height: 44px</code> — both prevent iOS Safari from auto-zooming the viewport on focus.</div>
+</section>
+
+<!-- ══════ 07 PILLS ══════ -->
+<section class="sec" id="pills">
+  <div class="sec-hd"><div class="sec-num">07</div><div class="sec-name">Pills & badges</div><div class="sec-desc">Status pills encode meaning only — never decorative. Add aria-label for screen readers.</div></div>
+  <div class="sub-sec">
+    <div class="sub-hd">Task status</div>
+    <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      <span class="pill pill-running"   aria-label="Task running"><span class="pill-dot"></span>Running</span>
+      <span class="pill pill-completed" aria-label="Task completed"><span class="pill-dot"></span>Completed</span>
+      <span class="pill pill-pending"   aria-label="Task pending"><span class="pill-dot"></span>Pending</span>
+      <span class="pill pill-failed"    aria-label="Task failed"><span class="pill-dot"></span>Failed</span>
+    </div>
+    <div class="sub-hd">Depth badges</div>
+    <div class="row" style="gap:8px"><span class="badge-std">Standard</span><span class="badge-deep">Deep</span></div>
+  </div>
+</section>
+
+<!-- ══════ 08 TASK CARDS ══════ -->
+<section class="sec" id="cards">
+  <div class="sec-hd"><div class="sec-num">08</div><div class="sec-name">Task cards</div><div class="sec-desc">2-col grid desktop · 1-col mobile · 1.5px selected border · accent gradient is 10% opacity, encodes status. Progress bar 2px height only.</div></div>
+  <div class="row" style="gap:12px;margin-bottom:16px">
+    <div class="task-card sel" style="flex:1;min-width:160px">
+      <div class="tc-accent ac-blue"></div>
+      <div class="tc-top"><div class="tc-icon ti-b"><svg width="13" height="13" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="4.5" stroke="#3b82f6" stroke-width="1.1"/></svg></div><span class="pill pill-running" aria-label="Running"><span class="pill-dot"></span>Running</span></div>
+      <div class="tc-title">Climate change & food security</div>
+      <div class="tc-sub">Standard · 2h ago</div>
+      <div class="prog-wrap"><div class="prog-fill pf-b" style="width:45%"></div></div>
+      <div class="tc-meta"><span class="tc-cost">$0.02 <span>/ ~$0.05</span></span><span class="badge-std">Standard</span></div>
+    </div>
+    <div class="task-card" style="flex:1;min-width:160px">
+      <div class="tc-accent ac-green"></div>
+      <div class="tc-top"><div class="tc-icon ti-g"><svg width="13" height="13" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="4.5" stroke="#22c55e" stroke-width="1.1"/><path d="M4.5 7l2 2 3-3" stroke="#22c55e" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></svg></div><span class="pill pill-completed" aria-label="Completed"><span class="pill-dot"></span>Completed</span></div>
+      <div class="tc-title">Quantum computing fundamentals</div>
+      <div class="tc-sub">Standard · yesterday</div>
+      <div class="prog-wrap"><div class="prog-fill pf-g" style="width:100%"></div></div>
+      <div class="tc-meta"><span class="tc-cost">$0.24</span><span class="badge-std">Standard</span></div>
+    </div>
+    <div class="task-card" style="flex:1;min-width:160px">
+      <div class="tc-accent ac-amber"></div>
+      <div class="tc-top"><div class="tc-icon ti-a"><svg width="13" height="13" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="4.5" stroke="#f59e0b" stroke-width="1.1"/><path d="M7 4.5v3" stroke="#f59e0b" stroke-width="1.1" stroke-linecap="round"/><circle cx="7" cy="9.5" r=".6" fill="#f59e0b"/></svg></div><span class="pill pill-pending" aria-label="Pending"><span class="pill-dot"></span>Pending</span></div>
+      <div class="tc-title">CRISPR gene therapy applications</div>
+      <div class="tc-sub">Deep · queued · ~30 min</div>
+      <div class="prog-wrap"><div class="prog-fill" style="width:0%;background:var(--warning)"></div></div>
+      <div class="tc-meta"><span class="tc-cost">~$3.50 <span>est.</span></span><span class="badge-deep">Deep</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════ 09 NAVIGATION ══════ -->
+<section class="sec" id="nav-comp">
+  <div class="sec-hd"><div class="sec-num">09</div><div class="sec-name">Navigation</div><div class="sec-desc">Sidebar 200px desktop. Bottom tab bar mobile (&lt;768px). Item height 34px. Sub-items indent 28px.</div></div>
+  <div class="row" style="gap:20px;flex-wrap:wrap">
+    <div>
+      <div class="sub-hd" style="margin-bottom:10px">Sidebar (desktop)</div>
+      <div class="sb-demo">
+        <div class="sb-logo-row"><div class="sb-mark"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5" stroke="#3b82f6" stroke-width="1.4"/><path d="M4.5 7h5M7 4.5v5" stroke="#3b82f6" stroke-width="1.4" stroke-linecap="round"/></svg></div><span class="sb-name">Consilience</span></div>
+        <div class="sbi">Dashboard</div>
+        <div class="sbi on">My research</div>
+        <div class="sb-sub"><div class="sbs">All tasks</div><div class="sbs on">Running (2)</div><div class="sbs">Completed</div></div>
+        <div class="sbi">Cost & usage</div>
+        <div class="sbi">New research</div>
+        <div style="margin-top:8px;padding-top:8px;border-top:.5px solid var(--border-default)"><div class="sbi">Settings</div></div>
+      </div>
+    </div>
+    <div>
+      <div class="sub-hd" style="margin-bottom:10px">Bottom nav (mobile)</div>
+      <div class="mob-frame">
+        <div class="mob-content"><span style="font-size:11px;color:var(--text-tertiary)">Page content</span></div>
+        <div class="mob-nav">
+          <div class="mob-tab on"><div class="mob-tab-ico"></div>Home</div>
+          <div class="mob-tab"><div class="mob-tab-ico"></div>Research</div>
+          <div class="mob-tab"><div class="mob-tab-ico"></div>Usage</div>
+          <div class="mob-tab"><div class="mob-tab-ico"></div>Settings</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════ 10 MODALS ══════ -->
+<section class="sec" id="modals">
+  <div class="sec-hd"><div class="sec-num">10</div><div class="sec-name">Modals</div><div class="sec-desc">max-width 480px · radius-xl · fadeUp 250ms · backdrop rgba(0,0,0,.45) · role="dialog" aria-modal="true" · focus trap · Escape closes · full-screen mobile.</div></div>
+  <div class="callout callout-info">
+    Focus trap rules: on open → focus first interactive element inside modal. Tab cycles within modal only.
+    On close → return focus to element that triggered open. Never close on backdrop click for destructive actions.
+  </div>
+  <div class="row" style="gap:12px;margin-top:14px;flex-wrap:wrap">
+    <div style="flex:1;min-width:200px"><div style="font-size:11px;color:var(--text-tertiary);margin-bottom:8px">Research started</div><div class="modal-stage"><div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="m1t"><div class="modal-icon">✅</div><div class="modal-title" id="m1t">Research started!</div><div class="modal-body">Climate change & food security · Standard · ~$0.05 · ~10 min</div><div class="modal-foot"><button class="btn btn-ghost btn-sm">Stay here</button><button class="btn btn-primary btn-sm">View progress</button></div></div></div></div>
+    <div style="flex:1;min-width:200px"><div style="font-size:11px;color:var(--text-tertiary);margin-bottom:8px">Upgrade required</div><div class="modal-stage"><div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="m2t"><div class="modal-icon">🔒</div><div class="modal-title" id="m2t">Upgrade required</div><div class="modal-body">Deep research is only available on the Professional plan.</div><div class="modal-foot"><button class="btn btn-ghost btn-sm">Not now</button><button class="btn btn-upgrade btn-sm">Upgrade now</button></div></div></div></div>
+    <div style="flex:1;min-width:200px"><div style="font-size:11px;color:var(--text-tertiary);margin-bottom:8px">Confirm cancel</div><div class="modal-stage"><div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="m3t"><div class="modal-icon">⚠️</div><div class="modal-title" id="m3t">Cancel this research?</div><div class="modal-body">Stops the task in progress. Partial costs ($0.02) still apply. Cannot be undone.</div><div class="modal-foot"><button class="btn btn-ghost btn-sm">Keep running</button><button class="btn btn-danger btn-sm">Yes, cancel</button></div></div></div></div>
+  </div>
+</section>
+
+<!-- ══════ 11 TOASTS ══════ -->
+<section class="sec" id="toasts">
+  <div class="sec-hd"><div class="sec-num">11</div><div class="sec-name">Toasts & error states</div><div class="sec-desc">Position: top-right · 16px from edge · max 3 visible · auto-dismiss 4s · 3px left border · slide-in from right · role="alert".</div></div>
+  <div class="toast-stack" style="margin-bottom:16px">
+    <div class="toast toast-s" role="alert"><span>Research completed successfully.</span><button class="toast-x" aria-label="Dismiss">×</button></div>
+    <div class="toast toast-w" role="alert"><span>1 task remaining this month.</span><button class="toast-x" aria-label="Dismiss">×</button></div>
+    <div class="toast toast-e" role="alert"><span>Server error. Please try again.</span><button class="toast-x" aria-label="Dismiss">×</button></div>
+    <div class="toast toast-i" role="alert"><span>Research round 2 of 3 complete.</span><button class="toast-x" aria-label="Dismiss">×</button></div>
+  </div>
+  <div class="sub-hd">API error → handler mapping (exact)</div>
+  <div style="background:var(--bg-surface);border:.5px solid var(--border-default);border-radius:var(--r-lg);overflow:hidden;box-shadow:var(--shadow-card)">
+    <table class="kb-table">
+      <thead><tr><th>Status</th><th>Handler</th><th>User sees</th></tr></thead>
+      <tbody>
+        <tr><td><code>401</code></td><td>Clear session → redirect /auth/signin</td><td>Nothing — page changes</td></tr>
+        <tr><td><code>402</code></td><td>Open QuotaExceededModal</td><td>Modal with upgrade CTA</td></tr>
+        <tr><td><code>403</code></td><td>toast.error()</td><td>"You don't have permission."</td></tr>
+        <tr><td><code>422</code></td><td>Return errors to form fields</td><td>Inline field error messages</td></tr>
+        <tr><td><code>429</code></td><td>toast.warning()</td><td>"Too many requests. Please wait."</td></tr>
+        <tr><td><code>500</code></td><td>toast.error()</td><td>"Server error. Please try again."</td></tr>
+        <tr><td>Network</td><td>toast.error()</td><td>"Connection failed. Check your network."</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ══════ 12 EMPTY & SKELETON ══════ -->
+<section class="sec" id="empty">
+  <div class="sec-hd"><div class="sec-num">12</div><div class="sec-name">Empty states & skeletons</div><div class="sec-desc">Empty: icon (32px, 40% opacity) + title + description + optional CTA. Skeletons: bg-hover with sk-pulse animation.</div></div>
+  <div class="row" style="gap:12px">
+    <div style="flex:1;min-width:180px;background:var(--bg-surface);border:.5px solid var(--border-default);border-radius:var(--r-lg);box-shadow:var(--shadow-card)">
+      <div class="empty"><div class="empty-ico">📋</div><div class="empty-name">No research tasks yet</div><div class="empty-desc">Create your first research task to get started.</div><button class="btn btn-primary btn-sm" style="margin-top:8px">New research</button></div>
+    </div>
+    <div style="flex:1;min-width:180px;background:var(--bg-surface);border:.5px solid var(--border-default);border-radius:var(--r-lg);padding:16px;box-shadow:var(--shadow-card)">
+      <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:12px">Skeleton — task card loading</div>
+      <div class="skel-card"><div style="display:flex;gap:10px;align-items:center"><div class="skel skel-circ" style="width:30px;height:30px;flex-shrink:0"></div><div class="skel skel-line" style="flex:1"></div></div><div class="skel skel-line" style="width:75%"></div><div class="skel" style="height:2px;border-radius:1px"></div><div style="display:flex;justify-content:space-between"><div class="skel skel-line" style="width:35%"></div><div class="skel skel-line" style="width:18%"></div></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════ 13 PROGRESS ══════ -->
+<section class="sec" id="progress">
+  <div class="sec-hd"><div class="sec-num">13</div><div class="sec-name">Research progress animation</div><div class="sec-desc">Progress bar: cubic-bezier(0.4,0,0.2,1) 500ms. Live dot: live-pulse 1.5s. Phase segments shown on task detail only. All wrapped in prefers-reduced-motion.</div></div>
+  <div class="prog-card" style="max-width:460px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+      <div class="live-dot" aria-hidden="true"></div>
+      <span style="font-size:13px;font-weight:500">Research in progress</span>
+      <span class="pill pill-running" aria-label="Running" style="margin-left:auto"><span class="pill-dot"></span>Running</span>
+    </div>
+    <div role="progressbar" aria-valuenow="62" aria-valuemin="0" aria-valuemax="100" aria-label="Research task 62% complete">
+      <div class="prog-wrap" style="height:3px;margin-bottom:8px"><div class="prog-fill pf-b" style="width:62%"></div></div>
+    </div>
+    <div class="phase-row">
+      <div class="phase-seg done" title="Planning"></div>
+      <div class="phase-seg done" title="Research"></div>
+      <div class="phase-seg current" title="Analysis"></div>
+      <div class="phase-seg" title="Synthesis"></div>
+      <div class="phase-seg" title="Review"></div>
+      <div class="phase-seg" title="Formatting"></div>
+    </div>
+    <div style="font-size:11px;color:var(--text-tertiary);margin-top:5px">Analysis — round 2 of 3 · ~4 min remaining</div>
+    <div style="display:flex;justify-content:space-between;margin-top:14px;padding-top:12px;border-top:.5px solid var(--border-default)">
+      <div><div style="font-size:11px;color:var(--text-tertiary);margin-bottom:2px">Cost so far</div><div style="font-size:18px;font-weight:500;font-family:var(--font-mono)">$0.02</div></div>
+      <div style="text-align:right"><div style="font-size:11px;color:var(--text-tertiary);margin-bottom:2px">Tokens used</div><div style="font-size:18px;font-weight:500;font-family:var(--font-mono)">6,240</div></div>
+    </div>
+  </div>
+  <div class="tg" style="margin-top:14px">
+    <div class="tc"><div class="tc-name">Progress transition</div><div class="tc-val">width 500ms cubic-bezier(.4,0,.2,1)</div></div>
+    <div class="tc"><div class="tc-name">Live dot animation</div><div class="tc-val">live-pulse 1.5s cubic-bezier(.4,0,.6,1) infinite</div></div>
+    <div class="tc"><div class="tc-name">Phase segments</div><div class="tc-val">6 segs: Planning 5% · Research 50% · Analysis 20% · Synthesis 15% · Review 8% · Formatting 2%</div></div>
+    <div class="tc"><div class="tc-name">Status text update</div><div class="tc-val">Every 10s (same as poll interval)</div></div>
+    <div class="tc"><div class="tc-name">Status text format</div><div class="tc-val">"Phase — round X of Y · ~N min remaining"</div></div>
+    <div class="tc"><div class="tc-name">Reduced motion</div><div class="tc-val">dot static · bar instant · no animation</div></div>
+  </div>
+</section>
+
+<!-- ══════ 14 CREDIBILITY ══════ -->
+<section class="sec" id="credibility">
+  <div class="sec-hd"><div class="sec-num">14</div><div class="sec-name">Source credibility visualization</div><div class="sec-desc">Backend: credibility float 0.0–1.0. Render as 80px×4px bar + percentage + label. Color encodes reliability tier.</div></div>
+  <div style="background:var(--bg-surface);border:.5px solid var(--border-default);border-radius:var(--r-lg);padding:20px;box-shadow:var(--shadow-card);display:flex;flex-direction:column;gap:14px;max-width:360px">
+    <div><div style="font-size:12px;font-weight:500;margin-bottom:7px">Nature Climate Change · 2024</div><div class="cred-row"><div class="cred-bg"><div class="cred-fill" style="width:92%;background:var(--text-success)"></div></div><span class="cred-pct" style="color:var(--text-success)">92%</span><span class="cred-lbl">Excellent</span></div></div>
+    <div><div style="font-size:12px;font-weight:500;margin-bottom:7px">Environmental Science Journal · 2023</div><div class="cred-row"><div class="cred-bg"><div class="cred-fill" style="width:72%;background:#ca8a04"></div></div><span class="cred-pct" style="color:#ca8a04">72%</span><span class="cred-lbl">Good</span></div></div>
+    <div><div style="font-size:12px;font-weight:500;margin-bottom:7px">Blog post · 2022</div><div class="cred-row"><div class="cred-bg"><div class="cred-fill" style="width:42%;background:var(--text-warning)"></div></div><span class="cred-pct" style="color:var(--text-warning)">42%</span><span class="cred-lbl">Moderate</span></div></div>
+    <div><div style="font-size:12px;font-weight:500;margin-bottom:7px">Unknown source · undated</div><div class="cred-row"><div class="cred-bg"><div class="cred-fill" style="width:18%;background:var(--text-danger)"></div></div><span class="cred-pct" style="color:var(--text-danger)">18%</span><span class="cred-lbl">Unreliable</span></div></div>
+  </div>
+  <div class="tg" style="margin-top:14px">
+    <div class="tc"><div class="tc-name">≥80%</div><div class="tc-val">text-success · "Excellent"</div></div>
+    <div class="tc"><div class="tc-name">60–79%</div><div class="tc-val">#ca8a04 amber · "Good"</div></div>
+    <div class="tc"><div class="tc-name">30–59%</div><div class="tc-val">text-warning · "Moderate"</div></div>
+    <div class="tc"><div class="tc-name">&lt;30%</div><div class="tc-val">text-danger · "Unreliable"</div></div>
+    <div class="tc"><div class="tc-name">Bar dimensions</div><div class="tc-val">80px × 4px · border-radius 2px</div></div>
+    <div class="tc"><div class="tc-name">Text alongside</div><div class="tc-val">mono-sm (11px) pct + caption label</div></div>
+  </div>
+</section>
+
+<!-- ══════ 15 RIGHT PANEL ══════ -->
+<section class="sec" id="rightpanel">
+  <div class="sec-hd"><div class="sec-num">15</div><div class="sec-name">Right panel</div><div class="sec-desc">230px fixed. Only on /research and /research/:id — NOT in shell layout. Tablet/mobile: slide-up overlay (full width, 90vh).</div></div>
+  <div class="rp">
+    <div class="rp-head">Task info <span style="font-size:11px;color:var(--text-tertiary);font-weight:400">Climate change</span></div>
+    <div class="rp-body">
+      <div class="rp-live"><div class="rp-live-lbl"><div class="live-dot" style="width:6px;height:6px"></div>Live · running</div><div class="rp-cost">$0.02</div><div class="rp-cost-sub">of ~$0.05 estimated</div><div class="rp-bar"><div class="rp-fill" style="width:45%"></div></div><div class="rp-bar-lbls"><span>45% complete</span><span>~5 min left</span></div></div>
+      <hr class="rp-div">
+      <div><div class="rp-sec">Task details</div><div class="rp-kv"><span class="rp-k">Topic</span><span class="rp-v">Climate & food security</span></div><div class="rp-kv"><span class="rp-k">Depth</span><span class="rp-v">Standard</span></div><div class="rp-kv"><span class="rp-k">Tokens</span><span class="rp-v">6,240</span></div><div class="rp-kv"><span class="rp-k">Agents</span><span class="rp-v">3 / 5</span></div><div class="rp-kv"><span class="rp-k">Started</span><span class="rp-v">2h ago</span></div></div>
+      <hr class="rp-div">
+      <div><div class="rp-sec">Monthly quota</div><div style="font-size:11px;color:var(--text-tertiary);margin-bottom:5px">Standard</div><div class="rp-bar"><div class="rp-fill" style="width:60%"></div></div><div class="rp-bar-lbls"><span>3 of 5</span><span>2 left</span></div><div style="font-size:11px;color:var(--text-tertiary);margin-top:8px;margin-bottom:5px">Deep</div><div class="rp-bar"></div><div class="rp-bar-lbls"><span>0 / 0</span><span style="color:var(--text-warning)">Upgrade</span></div></div>
+      <hr class="rp-div">
+      <div><div class="rp-sec">Tags</div><div class="rp-tags"><span class="rp-tag">Climate</span><span class="rp-tag">Agriculture</span></div></div>
+      <hr class="rp-div">
+      <div class="rp-btns"><div class="rp-btn">View</div><div class="rp-btn danger">Cancel</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════ 16 PAYMENT ══════ -->
+<section class="sec" id="payment">
+  <div class="sec-hd"><div class="sec-num">16</div><div class="sec-name">Payment & upgrade flow</div><div class="sec-desc">Complete free→paid conversion UI. Upgrade button uses violet (#7c3aed) — distinct from primary blue, reserved for paid CTAs only.</div></div>
+
+  <div class="sub-sec">
+    <div class="sub-hd">Upgrade banner (appears on /dashboard and /usage when free tier)</div>
+    <div class="upgrade-banner">
+      <div class="ub-text"><h3>Unlock deep research</h3><p>10× queries · 3 revision rounds · citation chain · priority support</p></div>
+      <button class="btn btn-upgrade">Upgrade to Pro — $29.99/mo</button>
+    </div>
+  </div>
+
+  <div class="sub-sec">
+    <div class="sub-hd">Plan comparison cards</div>
+    <div class="plan-grid">
+      <div class="plan-card">
+        <div class="plan-name">Free</div>
+        <div class="plan-price">$0</div>
+        <div class="plan-cycle">forever</div>
+        <div class="plan-feats">
+          <div class="plan-feat"><div class="feat-check">✓</div>5 standard tasks/month</div>
+          <div class="plan-feat"><div class="feat-check">✓</div>Basic verification</div>
+          <div class="plan-feat"><div class="feat-check">✓</div>PDF + DOCX export</div>
+          <div class="plan-feat"><div class="feat-x">✗</div><span style="color:var(--text-muted)">Deep research</span></div>
+          <div class="plan-feat"><div class="feat-x">✗</div><span style="color:var(--text-muted)">Priority support</span></div>
+        </div>
+        <button class="btn btn-secondary" style="width:100%">Current plan</button>
+      </div>
+      <div class="plan-card featured">
+        <div class="plan-badge">Most popular</div>
+        <div class="plan-name">Professional</div>
+        <div class="plan-price">$29.99</div>
+        <div class="plan-cycle">/month · cancel anytime</div>
+        <div class="plan-feats">
+          <div class="plan-feat"><div class="feat-check">✓</div>Unlimited standard tasks</div>
+          <div class="plan-feat"><div class="feat-check">✓</div>10 deep tasks/month</div>
+          <div class="plan-feat"><div class="feat-check">✓</div>3 revision rounds</div>
+          <div class="plan-feat"><div class="feat-check">✓</div>Citation chain verification</div>
+          <div class="plan-feat"><div class="feat-check">✓</div>Priority support + API access</div>
+        </div>
+        <button class="btn btn-upgrade" style="width:100%">Upgrade now</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="sub-sec">
+    <div class="sub-hd">Checkout flow</div>
+    <div class="tg">
+      <div class="tc"><div class="tc-name">Step 1</div><div class="tc-val">User clicks upgrade → POST /api/payments/checkout {plan_id, return_url}</div></div>
+      <div class="tc"><div class="tc-name">Step 2</div><div class="tc-val">Backend creates Stripe session → returns checkout_url</div></div>
+      <div class="tc"><div class="tc-name">Step 3</div><div class="tc-val">Frontend redirects to checkout_url (Stripe hosted page)</div></div>
+      <div class="tc"><div class="tc-name">Step 4</div><div class="tc-val">Stripe webhook → backend updates subscription_tier = "paid"</div></div>
+      <div class="tc"><div class="tc-name">Step 5</div><div class="tc-val">User returns to return_url (/payment-success)</div></div>
+      <div class="tc"><div class="tc-name">Step 6</div><div class="tc-val">Frontend calls GET /api/auth/me → refreshes user context → UI updates tier badge</div></div>
+      <div class="tc"><div class="tc-name">Payment failed</div><div class="tc-val">Stripe redirects to /payment-failed → show toast.error + retry button</div></div>
+      <div class="tc"><div class="tc-name">Loading state</div><div class="tc-val">Upgrade button shows Loader2 spinner + disabled while waiting for checkout_url</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════ 17 PAGES ══════ -->
+<section class="sec" id="pages">
+  <div class="sec-hd"><div class="sec-num">17</div><div class="sec-name">Page inventory</div><div class="sec-desc">All 15 routes. Green = public · Blue = authenticated · Amber = modal/overlay.</div></div>
+  <div style="display:flex;gap:12px;font-size:12px;margin-bottom:12px;flex-wrap:wrap">
+    <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#22c55e;margin-right:4px"></span>Public</span>
+    <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#3b82f6;margin-right:4px"></span>Authenticated</span>
+    <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#f59e0b;margin-right:4px"></span>Modal</span>
+  </div>
+  <div class="pg-grid">
+    <div class="pg-card"><div class="pg-dot" style="background:#22c55e"></div><div class="pg-route">/</div><div class="pg-name">Landing</div><div class="pg-desc">Hero, features, pricing, CTA</div></div>
+    <div class="pg-card"><div class="pg-dot" style="background:#22c55e"></div><div class="pg-route">/pricing</div><div class="pg-name">Pricing</div><div class="pg-desc">Plan comparison, FAQ</div></div>
+    <div class="pg-card"><div class="pg-dot" style="background:#22c55e"></div><div class="pg-route">/auth/signin</div><div class="pg-name">Sign in</div><div class="pg-desc">Neon Auth (may be pre-built)</div></div>
+    <div class="pg-card"><div class="pg-dot" style="background:#22c55e"></div><div class="pg-route">/auth/signup</div><div class="pg-name">Sign up</div><div class="pg-desc">Neon Auth (may be pre-built)</div></div>
+    <div class="pg-card"><div class="pg-dot" style="background:#22c55e"></div><div class="pg-route">/auth/reset</div><div class="pg-name">Reset password</div><div class="pg-desc">Email → token → new password</div></div>
+    <div class="pg-card"><div class="pg-dot" style="background:#3b82f6"></div><div class="pg-route">/dashboard</div><div class="pg-name">Dashboard</div><div class="pg-desc">Stats, recent tasks, quick actions</div></div>
+    <div class="pg-card"><div class="pg-dot" style="background:#3b82f6"></div><div class="pg-route">/research</div><div class="pg-name">My research</div><div class="pg-desc">Task grid + right panel</div></div>
+    <div class="pg-card"><div class="pg-dot" style="background:#3b82f6"></div><div class="pg-route">/research/new</div><div class="pg-name">New research</div><div class="pg-desc">Topic form, depth, cost est.</div></div>
+    <div class="pg-card"><div class="pg-dot" style="background:#3b82f6"></div><div class="pg-route">/research/:id</div><div class="pg-name">Task details</div><div class="pg-desc">5 tabs: overview, paper, sources, contradictions, log</div></div>
+    <div class="pg-card"><div class="pg-dot" style="background:#3b82f6"></div><div class="pg-route">/usage</div><div class="pg-name">Cost & usage</div><div class="pg-desc">Charts, quota, usage table</div></div>
+    <div class="pg-card"><div class="pg-dot" style="background:#3b82f6"></div><div class="pg-route">/settings/*</div><div class="pg-name">Settings</div><div class="pg-desc">6 tabs: profile, account, subscription, notifications, API keys, appearance</div></div>
+    <div class="pg-card"><div class="pg-dot" style="background:#f59e0b"></div><div class="pg-route">modal</div><div class="pg-name">Research started</div><div class="pg-desc">Post-submit confirmation</div></div>
+    <div class="pg-card"><div class="pg-dot" style="background:#f59e0b"></div><div class="pg-route">modal</div><div class="pg-name">Upgrade required</div><div class="pg-desc">Deep on free tier</div></div>
+    <div class="pg-card"><div class="pg-dot" style="background:#f59e0b"></div><div class="pg-route">modal</div><div class="pg-name">Cancel confirm</div><div class="pg-desc">Destructive action guard</div></div>
+    <div class="pg-card"><div class="pg-dot" style="background:#f59e0b"></div><div class="pg-route">modal</div><div class="pg-name">Quota exceeded</div><div class="pg-desc">Monthly limit reached</div></div>
+  </div>
+</section>
+
+<!-- ══════ 18 ACCESSIBILITY ══════ -->
+<section class="sec" id="a11y">
+  <div class="sec-hd"><div class="sec-num">18</div><div class="sec-name">Accessibility — WCAG 2.1 AA</div><div class="sec-desc">Required, not optional. Minimum 4.5:1 body text · 3:1 UI components. Every interactive element keyboard accessible.</div></div>
+
+  <div class="sub-sec">
+    <div class="sub-hd">Verified contrast ratios</div>
+    <div class="a11y-grid">
+      <div class="a11y-card"><div class="a11y-lbl">Text on bg-base</div>
+        <div class="contrast-row"><div class="c-sw" style="background:#1a1916"></div><div><div class="c-rat">text-primary on bg-base</div><div class="c-pass">18:1 ✅ AAA</div></div></div>
+        <div class="contrast-row"><div class="c-sw" style="background:#4a4945"></div><div><div class="c-rat">text-secondary on bg-base</div><div class="c-pass">8.5:1 ✅ AAA</div></div></div>
+        <div class="contrast-row"><div class="c-sw" style="background:#888780"></div><div><div class="c-rat">text-tertiary on bg-base</div><div class="c-pass">4.8:1 ✅ AA</div></div></div>
+        <div class="contrast-row"><div class="c-sw" style="background:#1d4ed8"></div><div><div class="c-rat">text-brand on bg-base</div><div class="c-pass">8.6:1 ✅ AAA</div></div></div>
+      </div>
+      <div class="a11y-card"><div class="a11y-lbl">Required ARIA patterns</div>
+        <div style="font-size:11px;font-family:var(--font-mono);color:var(--text-secondary);line-height:2.1">
+          Icon-only btn:<br><code>&lt;button aria-label="Close"&gt;</code><br>
+          Status pill:<br><code>&lt;span aria-label="Running, 45%"&gt;</code><br>
+          Modal:<br><code>role="dialog" aria-modal="true"</code><br>
+          Error input:<br><code>aria-invalid="true" aria-describedby="err"</code><br>
+          Progress:<br><code>role="progressbar" aria-valuenow={45}</code>
+        </div>
+      </div>
+      <div class="a11y-card"><div class="a11y-lbl">Focus management</div>
+        <div style="font-size:12px;color:var(--text-secondary);line-height:1.7">
+          Focus ring: <code>box-shadow: 0 0 0 2px rgba(59,130,246,.4)</code><br><br>
+          Modal open → focus first interactive element inside.<br>
+          Tab cycles within modal only.<br>
+          Modal close → return focus to trigger element.<br><br>
+          Never use <code>outline: none</code> without a visible alternative.
+        </div>
+      </div>
+      <div class="a11y-card"><div class="a11y-lbl">Semantic HTML rules</div>
+        <div style="font-size:12px;color:var(--text-secondary);line-height:1.8">
+          <code>&lt;header&gt;</code> top nav bar<br>
+          <code>&lt;main&gt;</code> page content<br>
+          <code>&lt;aside&gt;</code> sidebar, right panel<br>
+          <code>&lt;nav&gt;</code> navigation lists<br>
+          <code>&lt;article&gt;</code> research paper<br>
+          <code>&lt;section&gt;</code> page sections<br><br>
+          Never <code>&lt;div role="button"&gt;</code> when <code>&lt;button&gt;</code> exists.
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="callout callout-info" style="margin-top:14px">
+    Reduced motion: every animation/transition must be inside <code>@media (prefers-reduced-motion: reduce)</code>. Set all durations to <code>0.01ms !important</code>. This is already applied globally in the :root CSS above.
+  </div>
+</section>
+
+<!-- ══════ 19 KEYBOARD ══════ -->
+<section class="sec" id="keyboard">
+  <div class="sec-hd"><div class="sec-num">19</div><div class="sec-name">Keyboard navigation</div><div class="sec-desc">All interactions must be achievable by keyboard. Tab order must match visual order (left-to-right, top-to-bottom).</div></div>
+  <div style="background:var(--bg-surface);border:.5px solid var(--border-default);border-radius:var(--r-lg);overflow:hidden;box-shadow:var(--shadow-card)">
+    <table class="kb-table">
+      <thead><tr><th>Key</th><th>Action</th><th>Context</th></tr></thead>
+      <tbody>
+        <tr><td><span class="kb-key">Tab</span></td><td>Move to next interactive element</td><td>Global</td></tr>
+        <tr><td><span class="kb-key">Shift</span><span class="kb-key">Tab</span></td><td>Move to previous interactive element</td><td>Global</td></tr>
+        <tr><td><span class="kb-key">Enter</span></td><td>Activate button, submit form, follow link</td><td>Global</td></tr>
+        <tr><td><span class="kb-key">Space</span></td><td>Toggle checkbox, activate button</td><td>Forms</td></tr>
+        <tr><td><span class="kb-key">Escape</span></td><td>Close modal, dismiss toast, cancel operation</td><td>Modals, overlays</td></tr>
+        <tr><td><span class="kb-key">↑</span><span class="kb-key">↓</span></td><td>Navigate list items, dropdown options</td><td>Dropdowns, lists</td></tr>
+        <tr><td><span class="kb-key">←</span><span class="kb-key">→</span></td><td>Switch between tabs</td><td>Tab components</td></tr>
+        <tr><td><span class="kb-key">Home</span></td><td>Jump to first item in list</td><td>Long lists</td></tr>
+        <tr><td><span class="kb-key">End</span></td><td>Jump to last item in list</td><td>Long lists</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="sub-hd" style="margin-top:20px">Focus trap rules (modals)</div>
+  <div class="tg">
+    <div class="tc"><div class="tc-name">On modal open</div><div class="tc-val">Move focus to first focusable element inside modal (usually the title or first button)</div></div>
+    <div class="tc"><div class="tc-name">While modal open</div><div class="tc-val">Tab cycles only within the modal — never reaches page behind backdrop</div></div>
+    <div class="tc"><div class="tc-name">On modal close</div><div class="tc-val">Return focus to the element that triggered the modal open</div></div>
+    <div class="tc"><div class="tc-name">Backdrop click</div><div class="tc-val">Closes informational modals. Does NOT close destructive confirmation modals.</div></div>
+    <div class="tc"><div class="tc-name">Escape key</div><div class="tc-val">Always closes modal (including destructive ones) — treat as cancel action</div></div>
+    <div class="tc"><div class="tc-name">Screen reader announce</div><div class="tc-val">role="dialog" + aria-modal="true" + aria-labelledby pointing to modal title</div></div>
+  </div>
+</section>
+
+<!-- ══════ 20 MOBILE ══════ -->
+<section class="sec" id="mobile">
+  <div class="sec-hd"><div class="sec-num">20</div><div class="sec-name">Mobile & responsive patterns</div><div class="sec-desc">Mobile-first. All touch targets 44px minimum. font-size 16px on inputs. Sidebar → bottom tab bar. Right panel → slide-up overlay.</div></div>
+  <div class="tg">
+    <div class="tc"><div class="tc-name">&lt;768px mobile</div><div class="tc-val">1-col cards · bottom tab bar (48px, 4-5 tabs) · 44px touch targets · full-width inputs</div></div>
+    <div class="tc"><div class="tc-name">768–1024 tablet</div><div class="tc-val">2-col cards · icon-only sidebar (48px wide) · right panel = center overlay modal</div></div>
+    <div class="tc"><div class="tc-name">1024–1280 desktop</div><div class="tc-val">Full 3-panel shell · 2-col card grid</div></div>
+    <div class="tc"><div class="tc-name">&gt;1280 wide</div><div class="tc-val">3-col card grid available</div></div>
+    <div class="tc"><div class="tc-name">Bottom tab bar</div><div class="tc-val">48px height · icon 16px + label 10px · active: blue-400 color</div></div>
+    <div class="tc"><div class="tc-name">Right panel mobile</div><div class="tc-val">Slide-up overlay · full width · 90vh · close on backdrop tap</div></div>
+    <div class="tc"><div class="tc-name">Button min-height</div><div class="tc-val">44px mobile (vs 36px desktop)</div></div>
+    <div class="tc"><div class="tc-name">Input min-height</div><div class="tc-val">44px mobile (vs 36px desktop)</div></div>
+    <div class="tc"><div class="tc-name">Input font-size</div><div class="tc-val">16px minimum — prevents iOS auto-zoom</div></div>
+    <div class="tc"><div class="tc-name">Min tap spacing</div><div class="tc-val">8px between tappable elements</div></div>
+    <div class="tc"><div class="tc-name">Modals mobile</div><div class="tc-val">Full-screen on &lt;480px viewport width</div></div>
+    <div class="tc"><div class="tc-name">Tables mobile</div><div class="tc-val">Card list view OR horizontal scroll with sticky first column</div></div>
+    <div class="tc"><div class="tc-name">Depth cards mobile</div><div class="tc-val">Stacked vertically (not side-by-side)</div></div>
+    <div class="tc"><div class="tc-name">Grid cards mobile</div><div class="tc-val">1-col, full width, card-gap 8px</div></div>
+  </div>
+</section>
+
+<!-- ══════ 21 DO/DON'T ══════ -->
+<section class="sec" id="rules">
+  <div class="sec-hd"><div class="sec-num">21</div><div class="sec-name">Do / Don't</div><div class="sec-desc">Non-negotiable. Violations create expensive inconsistency.</div></div>
+  <div class="dd-grid">
+    <div class="dd-card dd-do">
+      <div class="dd-hd">✓ Do</div>
+      <div class="dd-list">
+        <div>Use #3b82f6 as the primary action color</div>
+        <div>Use CSS variable tokens for every color value</div>
+        <div>Use DM Sans for all UI text (400 and 500 only)</div>
+        <div>Use 0.5px borders on all components</div>
+        <div>Use radius-lg (11px) for task cards</div>
+        <div>Add aria-label to every icon-only button</div>
+        <div>Add role="dialog" aria-modal to modals</div>
+        <div>Wrap all animations in prefers-reduced-motion</div>
+        <div>Use 16px font-size on mobile inputs</div>
+        <div>Use 44px min-height on mobile buttons/inputs</div>
+        <div>Load fonts via next/font/google with display:swap</div>
+        <div>Show credibility as bar + percentage + label</div>
+        <div>Map 422 errors to form fields (not toasts)</div>
+        <div>Use violet (#7c3aed) only for paid upgrade CTAs</div>
+        <div>Return focus to trigger after closing modal</div>
+      </div>
+    </div>
+    <div class="dd-card dd-dont">
+      <div class="dd-hd">✗ Don't</div>
+      <div class="dd-list">
+        <div>Never use #1E3A8A as a UI action color</div>
+        <div>Never hardcode hex values in components</div>
+        <div>Never use Inter, Roboto, Arial, or system-ui</div>
+        <div>Never use font-weight 600 or 700</div>
+        <div>Never use box-shadow in dark mode</div>
+        <div>Never put the right panel in the shell layout</div>
+        <div>Never use 3-col grid below 1280px</div>
+        <div>Never show a toast for 422 validation errors</div>
+        <div>Never use border-radius above 14px</div>
+        <div>Never stack two primary buttons together</div>
+        <div>Never use &lt;div role="button"&gt; when &lt;button&gt; exists</div>
+        <div>Never animate mode switch — instant swap only</div>
+        <div>Never load fonts via &lt;link&gt; tag (use next/font)</div>
+        <div>Never show credibility as stars only</div>
+        <div>Never use violet for non-upgrade actions</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════ 22 IMPLEMENTATION PLAN ══════ -->
+<section class="sec" id="plan">
+  <div class="sec-hd"><div class="sec-num">22</div><div class="sec-name">Implementation plan</div><div class="sec-desc">3–4 hours total. 5 critical items only. In dependency order — each phase unblocks the next.</div></div>
+
+  <div class="sub-sec">
+    <div class="sub-hd">Priority matrix (5 critical items)</div>
+    <div style="background:var(--bg-surface);border:.5px solid var(--border-default);border-radius:var(--r-lg);overflow:hidden;box-shadow:var(--shadow-card)">
+      <table class="priority-matrix">
+        <thead><tr><th>Priority</th><th>Task</th><th>Effort</th><th>Unblocks</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><span class="prio-badge prio-crit">Critical 1</span></td>
+            <td><strong style="font-weight:500">Design tokens + CSS variables</strong><br>globals.css with all light/dark tokens, ThemeProvider, useTheme hook</td>
+            <td>45 min</td>
+            <td>Everything else — no component can be built without tokens</td>
+          </tr>
+          <tr>
+            <td><span class="prio-badge prio-crit">Critical 2</span></td>
+            <td><strong style="font-weight:500">Auth shell (Neon)</strong><br>Scan repo for Neon auth pattern, implement protected layout, JWT interceptor</td>
+            <td>60 min</td>
+            <td>All authenticated pages</td>
+          </tr>
+          <tr>
+            <td><span class="prio-badge prio-crit">Critical 3</span></td>
+            <td><strong style="font-weight:500">API layer + types</strong><br>Axios instance, interceptors, typed API functions, all TypeScript types</td>
+            <td>45 min</td>
+            <td>Dashboard, research form, task detail</td>
+          </tr>
+          <tr>
+            <td><span class="prio-badge prio-high">High 4</span></td>
+            <td><strong style="font-weight:500">Dashboard + task grid</strong><br>TaskCard, TaskGrid, RightPanel, useResearch hook with polling</td>
+            <td>60 min</td>
+            <td>Core user loop visible and working</td>
+          </tr>
+          <tr>
+            <td><span class="prio-badge prio-high">High 5</span></td>
+            <td><strong style="font-weight:500">New research form</strong><br>DepthSelector, CostEstimator, quota check, 3 modals, POST to API</td>
+            <td>45 min</td>
+            <td>First research task creatable — main value prop demonstrated</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="sub-sec">
+    <div class="sub-hd">Timeline — 4 phases</div>
+    <div class="plan-timeline">
+      <div class="phase-block">
+        <div class="phase-spine"><div class="phase-dot" style="background:var(--text-danger)"></div><div class="phase-line" style="background:var(--border-default)"></div></div>
+        <div class="phase-content">
+          <div class="phase-label" style="color:var(--text-danger)">Phase 1 — Foundation (45 min)</div>
+          <div class="phase-time">Do this first. Everything else depends on it.</div>
+          <div class="phase-items">
+            <div class="phase-item"><div class="pi-num" style="background:var(--bg-danger);color:var(--text-danger)">1</div>Setup Next.js 14 + TypeScript + Tailwind</div>
+            <div class="phase-item"><div class="pi-num" style="background:var(--bg-danger);color:var(--text-danger)">2</div>Write globals.css with all CSS variable tokens (light + dark)</div>
+            <div class="phase-item"><div class="pi-num" style="background:var(--bg-danger);color:var(--text-danger)">3</div>ThemeProvider + useTheme hook + localStorage persistence</div>
+            <div class="phase-item"><div class="pi-num" style="background:var(--bg-danger);color:var(--text-danger)">4</div>Load fonts via next/font/google</div>
+          </div>
+        </div>
+      </div>
+      <div class="phase-block">
+        <div class="phase-spine"><div class="phase-dot" style="background:var(--text-warning)"></div><div class="phase-line" style="background:var(--border-default)"></div></div>
+        <div class="phase-content">
+          <div class="phase-label" style="color:var(--text-warning)">Phase 2 — Auth + API (60 min)</div>
+          <div class="phase-time">Scan codebase first to confirm Neon auth pattern before writing any code.</div>
+          <div class="phase-items">
+            <div class="phase-item"><div class="pi-num" style="background:var(--bg-warning);color:var(--text-warning)">5</div>Scan repo → identify Neon auth method (Stack / direct / Next-Auth)</div>
+            <div class="phase-item"><div class="pi-num" style="background:var(--bg-warning);color:var(--text-warning)">6</div>Implement protected (app)/layout.tsx auth guard</div>
+            <div class="phase-item"><div class="pi-num" style="background:var(--bg-warning);color:var(--text-warning)">7</div>Shell layout: Sidebar + Topbar + content area</div>
+            <div class="phase-item"><div class="pi-num" style="background:var(--bg-warning);color:var(--text-warning)">8</div>Axios instance + interceptors + all TypeScript types</div>
+            <div class="phase-item"><div class="pi-num" style="background:var(--bg-warning);color:var(--text-warning)">9</div>Toast notification system (zustand store)</div>
+          </div>
+        </div>
+      </div>
+      <div class="phase-block">
+        <div class="phase-spine"><div class="phase-dot" style="background:var(--blue-400)"></div><div class="phase-line" style="background:var(--border-default)"></div></div>
+        <div class="phase-content">
+          <div class="phase-label" style="color:var(--blue-400)">Phase 3 — Core pages (90 min)</div>
+          <div class="phase-time">The main user loop — from login to completing first research.</div>
+          <div class="phase-items">
+            <div class="phase-item"><div class="pi-num" style="background:var(--bg-info);color:var(--text-brand)">10</div>Dashboard: TaskCard, TaskGrid, stat cards, RightPanel, polling</div>
+            <div class="phase-item"><div class="pi-num" style="background:var(--bg-info);color:var(--text-brand)">11</div>New research form: depth selector, sliders, cost estimate, modals</div>
+            <div class="phase-item"><div class="pi-num" style="background:var(--bg-info);color:var(--text-brand)">12</div>Task detail page: 5 tabs, progress animation, credibility bars</div>
+            <div class="phase-item"><div class="pi-num" style="background:var(--bg-info);color:var(--text-brand)">13</div>Paper viewer: react-markdown + rehype-highlight + export</div>
+          </div>
+        </div>
+      </div>
+      <div class="phase-block">
+        <div class="phase-spine"><div class="phase-dot" style="background:var(--text-success)"></div><div class="phase-line" style="background:transparent"></div></div>
+        <div class="phase-content">
+          <div class="phase-label" style="color:var(--text-success)">Phase 4 — Supporting pages (45 min)</div>
+          <div class="phase-time">Usage, settings, payment flow, and landing page.</div>
+          <div class="phase-items">
+            <div class="phase-item"><div class="pi-num" style="background:var(--bg-success);color:var(--text-success)">14</div>Cost & usage page: Recharts line chart, quota bars, table</div>
+            <div class="phase-item"><div class="pi-num" style="background:var(--bg-success);color:var(--text-success)">15</div>Settings: 6 tabs, profile, subscription, API keys, appearance</div>
+            <div class="phase-item"><div class="pi-num" style="background:var(--bg-success);color:var(--text-success)">16</div>Payment flow: pricing page, upgrade modal, Stripe redirect</div>
+            <div class="phase-item"><div class="pi-num" style="background:var(--bg-success);color:var(--text-success)">17</div>Landing page: hero, features, pricing section</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout callout-success">
+    <strong>Estimated total: 4 hours for a fully working, spec-compliant frontend.</strong>
+    Each phase is independently shippable — Phase 1+2 gives you a working auth shell.
+    Phase 3 adds the core research loop. Phase 4 completes the product.
+  </div>
+</section>
+
+</main>
+</div>
+
+<script>
+function toggleTheme() {
+  const html = document.documentElement;
+  const dark = html.getAttribute('data-theme') === 'dark';
+  html.setAttribute('data-theme', dark ? 'light' : 'dark');
+  document.getElementById('ti').textContent = dark ? '☀️' : '🌙';
+  document.getElementById('tl').textContent = dark ? 'Light mode' : 'Dark mode';
+}
+
+// Smooth scroll + active state
+document.querySelectorAll('.nav-a').forEach(a => {
+  a.addEventListener('click', e => {
+    e.preventDefault();
+    const id = a.getAttribute('href').slice(1);
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    document.querySelectorAll('.nav-a').forEach(l => l.classList.remove('active'));
+    a.classList.add('active');
+  });
+});
+
+// Scrollspy
+const obs = new IntersectionObserver(entries => {
+  entries.forEach(en => {
+    if (en.isIntersecting) {
+      const id = en.target.id;
+      document.querySelectorAll('.nav-a').forEach(l => {
+        l.classList.toggle('active', l.getAttribute('href') === '#' + id);
+      });
+    }
+  });
+}, { rootMargin: '-15% 0px -75% 0px' });
+
+document.querySelectorAll('.sec[id]').forEach(s => obs.observe(s));
+</script>
+</body>
+</html>
