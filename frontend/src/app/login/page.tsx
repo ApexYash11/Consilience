@@ -16,7 +16,17 @@ export default function LoginPage() {
 
   useEffect(() => {
     const fromQuery = new URLSearchParams(window.location.search).get("next");
-    if (fromQuery) {
+    
+    function isValidRedirectPath(path: string): boolean {
+      try {
+        const url = new URL(path, window.location.origin);
+        return url.origin === window.location.origin;
+      } catch {
+        return false;
+      }
+    }
+
+    if (fromQuery && isValidRedirectPath(fromQuery)) {
       setNextPath(fromQuery);
     }
   }, []);

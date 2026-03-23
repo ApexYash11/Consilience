@@ -21,7 +21,7 @@ async function parseResponse<T>(response: Response): Promise<T> {
 
   if (response.ok) {
     if (!isJson) {
-      return undefined as T;
+      throw new ApiError("Unexpected non-JSON response", response.status);
     }
 
     return (await response.json()) as T;
@@ -52,7 +52,9 @@ export async function apiRequest<T>(
   const requestHeaders = new Headers(headers);
 
   if (!requestHeaders.has("Content-Type") && rest.body) {
-    requestHeaders.set("Content-Type", "application/json");
+    if (!(rest.body instanceof FormData) && !(rest.body instanceof Blob)) {
+      requestHeaders.set("Content-Type", "application/json");
+    }
   }
 
   if (token) {

@@ -4,11 +4,12 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from "react";
-import { getUsage, login as loginRequest, register as registerRequest, type UsageResponse } from "@/lib/auth";
+import { getUsage, login as loginRequest, register as registerRequest, validateSession, type UsageResponse } from "@/lib/auth";
 import { ApiError } from "@/lib/api";
 
 const STORAGE_KEY = "consilience_access_token";
@@ -49,7 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return window.localStorage.getItem(STORAGE_KEY);
   });
-  const [status, setStatus] = useState<AuthStatus>(() => (token ? "authenticated" : "unauthenticated"));
+  const [status, setStatus] = useState<AuthStatus>("loading");
   const [usage, setUsage] = useState<UsageResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -58,13 +59,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUsage(summary);
   }, []);
 
+  useEffect(() => {
+    async function initAuth() {
+      if (!token) {
+        setStatus("unauthenticated");
+        return;
+      }
+      try {
+        const isValid = await validateSession(token);
+        if (isValid) {
+          setStatus("authenticated");
+          await loadUsage(token);
+        } else {
+          window.localStorage.removeItem(STORAGE_KEY);
+          setToken(null);
+          setStatus("unauthenticated");
+        }
+      } catch {
+        window.localStorage.removeItem(STORAGE_KEY);
+        setToken(null);
+        setStatus("unauthenticated");
+      }
+    }
+    initAuth();
+  }, [token, loadUsage]);
+
   const login = useCallback(async (email: string, password: string) => {
     setError(null);
     const result = await loginRequest({ email, password });
-    window.localStorage.setItem(STORAGE_KEY, result.access_token);
-    setToken(result.access_token);
-    await loadUsage(result.access_token);
-    setStatus("authenticated");
+    
+    try {
+      await loadUsage(result.access_token);
+      window.localStorage.setItem(STORAGE_KEY, result.access_token);
+      setToken(result.access_token);
+      setStatus("authenticated");
+    } catch {
+      throw new Error("Failed to load usage data after login");
+    }
   }, [loadUsage]);
 
   const register = useCallback(

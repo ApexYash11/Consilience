@@ -26,7 +26,9 @@ export default function RegisterPage() {
 
     try {
       await register(email, password, fullName || undefined);
-      router.replace("/");
+    } catch (err) {
+      // Error is handled and displayed by AuthContext
+      console.error(err);
     } finally {
       setIsSubmitting(false);
     }

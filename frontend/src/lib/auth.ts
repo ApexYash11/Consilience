@@ -39,8 +39,9 @@ async function tryAuthEndpoints<T>(
   endpointSuffix: string,
   payload: unknown
 ): Promise<T> {
+  // Try fallback logic in case of reverse-proxy misconfiguration or nested API paths
   const candidates = [`/api/auth${endpointSuffix}`, `/api/auth/api/auth${endpointSuffix}`];
-  let lastError: unknown;
+  const errors: unknown[] = [];
 
   for (const endpoint of candidates) {
     try {
@@ -49,11 +50,12 @@ async function tryAuthEndpoints<T>(
         body: JSON.stringify(payload),
       });
     } catch (error) {
-      lastError = error;
+      errors.push(error);
     }
   }
 
-  throw lastError;
+  const combinedError = Object.assign(new Error("All auth endpoints failed"), { errors });
+  throw combinedError;
 }
 
 export async function login(payload: LoginPayload): Promise<TokenResponse> {
