@@ -54,11 +54,23 @@ export default function RegisterPage() {
       </div>
 
       <div className="flex flex-col gap-3 mb-6">
-        <Button variant="secondary" className="w-full flex items-center justify-center gap-2.5 h-10 border border-[var(--border-default)]">
+        <Button 
+          disabled
+          title="Sign up with Google — Coming soon"
+          variant="secondary" 
+          className="w-full flex items-center justify-center gap-2.5 h-10 border border-[var(--border-default)]"
+          aria-label="Sign up with Google — Coming soon"
+        >
           <GoogleIcon className="w-5 h-5 flex-shrink-0" />
           <span className="whitespace-nowrap">Sign up with Google</span>
         </Button>
-        <Button variant="secondary" className="w-full flex items-center justify-center gap-2.5 h-10 border border-[var(--border-default)]">
+        <Button 
+          disabled
+          title="Sign up with GitHub — Coming soon"
+          variant="secondary" 
+          className="w-full flex items-center justify-center gap-2.5 h-10 border border-[var(--border-default)]"
+          aria-label="Sign up with GitHub — Coming soon"
+        >
           <GitHubIcon className="w-5 h-5 flex-shrink-0 text-[var(--text-primary)]" />
           <span className="whitespace-nowrap">Sign up with GitHub</span>
         </Button>
@@ -110,7 +122,7 @@ export default function RegisterPage() {
             <button 
               type="button" 
               onClick={() => setShowPassword(!showPassword)}
-              className="focus:outline-none hover:text-[var(--text-primary)] transition-colors"
+              className="focus-visible:ring-2 focus-visible:ring-[var(--blue-400)] focus-visible:ring-offset-0 focus-visible:rounded-sm hover:text-[var(--text-primary)] transition-colors"
               aria-label={showPassword ? "Hide password" : "Show password"}
             >
               {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}

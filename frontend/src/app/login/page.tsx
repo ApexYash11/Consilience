@@ -16,6 +16,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -70,11 +71,23 @@ export default function LoginPage() {
       </div>
 
       <div className="flex flex-col gap-3 mb-6">
-        <Button variant="secondary" className="w-full flex items-center justify-center gap-2.5 h-10 border border-[var(--border-default)]">
+        <Button 
+          disabled
+          title="Sign in with Google — Coming soon"
+          variant="secondary" 
+          className="w-full flex items-center justify-center gap-2.5 h-10 border border-[var(--border-default)]"
+          aria-label="Sign in with Google — Coming soon"
+        >
           <GoogleIcon className="w-5 h-5 flex-shrink-0" />
           <span className="whitespace-nowrap">Sign in with Google</span>
         </Button>
-        <Button variant="secondary" className="w-full flex items-center justify-center gap-2.5 h-10 border border-[var(--border-default)]">
+        <Button 
+          disabled
+          title="Sign in with GitHub — Coming soon"
+          variant="secondary" 
+          className="w-full flex items-center justify-center gap-2.5 h-10 border border-[var(--border-default)]"
+          aria-label="Sign in with GitHub — Coming soon"
+        >
           <GitHubIcon className="w-5 h-5 flex-shrink-0 text-[var(--text-primary)]" />
           <span className="whitespace-nowrap">Sign in with GitHub</span>
         </Button>
@@ -110,7 +123,7 @@ export default function LoginPage() {
               <button 
                 type="button" 
                 onClick={() => setShowPassword(!showPassword)}
-                className="focus:outline-none hover:text-[var(--text-primary)] transition-colors"
+                className="focus-visible:ring-2 focus-visible:ring-[var(--blue-400)] focus-visible:ring-offset-0 focus-visible:rounded-sm hover:text-[var(--text-primary)] transition-colors"
                 aria-label={showPassword ? "Hide password" : "Show password"}
               >
                 {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -123,11 +136,13 @@ export default function LoginPage() {
           <label className="flex items-center gap-2 cursor-pointer">
             <input 
               type="checkbox" 
+              checked={rememberMe}
+              onChange={(e) => setRememberMe(e.target.checked)}
               className="w-4 h-4 rounded border-[var(--border-default)] text-[var(--accent-primary)] focus:ring-[var(--accent-primary)] bg-[var(--bg-surface)]"
             />
             <span className="text-sm border-transparent text-[var(--text-secondary)]">Remember me</span>
           </label>
-          <Link href="/login" className="text-sm font-medium text-[var(--accent-primary)] hover:underline">
+          <Link href="/forgot-password" className="text-sm font-medium text-[var(--accent-primary)] hover:underline">
             Forgot password?
           </Link>
         </div>
