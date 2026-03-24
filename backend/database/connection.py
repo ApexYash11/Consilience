@@ -51,8 +51,8 @@ def _clean_postgres_url(db_url: str) -> str:
     """
     Clean PostgreSQL URL by removing asyncpg-specific parameters.
     
-    Removes sslmode and channel_binding from query string using proper URL parsing,
-    while preserving psycopg2-supported parameters like sslmode is needed for sync connections.
+    Removes async_fallback and sslrootcert from query string using proper URL parsing.
+    These parameters are specific to asyncpg and should not be passed to the async driver.
     
     Args:
         db_url: PostgreSQL URL (may have asyncpg-specific params)

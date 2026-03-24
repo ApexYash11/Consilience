@@ -67,6 +67,7 @@ export function useOAuth() {
   /**
    * Handle OAuth callback from provider
    * Extract code from URL and exchange for token
+   * Note: State validation is handled by callback pages, not here
    */
   const handleOAuthCallback = useCallback(
     async (provider: 'google' | 'github', code: string): Promise<boolean> => {
@@ -79,23 +80,19 @@ export function useOAuth() {
         });
 
         if (!response.ok) {
-          // Try to parse JSON error response, fall back to text/status
+          // Read response body only once - save for fallback use
           let errorMessage = `${provider} authentication failed`;
           try {
-            const error = await response.json();
-            errorMessage = error.detail || errorMessage;
+            const data = await response.json();
+            errorMessage = data.detail || errorMessage;
           } catch {
             // If JSON parsing fails, try text
             try {
               const text = await response.text();
-              if (text) {
-                errorMessage = text;
-              } else {
-                errorMessage = `HTTP ${response.status} ${response.statusText}`;
-              }
+              errorMessage = text || `HTTP ${response.status}`;
             } catch {
               // Fall back to status info
-              errorMessage = `HTTP ${response.status} ${response.statusText}`;
+              errorMessage = `HTTP ${response.status}`;
             }
           }
           throw new Error(errorMessage);
@@ -103,19 +100,17 @@ export function useOAuth() {
 
         const data: OAuthToken = await response.json();
 
-        // Store token
+        // Store token (don't redirect - let caller handle that)
         localStorage.setItem('access_token', data.access_token);
         localStorage.setItem('token_type', data.token_type);
 
-        // Redirect to dashboard
-        router.push('/dashboard');
         return true;
       } catch (error) {
         console.error(`OAuth callback failed for ${provider}:`, error);
         return false;
       }
     },
-    [router]
+    []
   );
 
   return {

@@ -50,10 +50,23 @@ class GUID(TypeDecorator):
         return value
 
     def process_result_value(self, value, dialect):
-        """Convert stored string back to UUID."""
+        """Convert stored value back to UUID.
+        
+        PostgreSQL's native UUID type returns uuid.UUID objects directly,
+        while other databases return strings. This method handles both cases.
+        """
         if value is None:
             return value
-        return uuid.UUID(value)
+        
+        # PostgreSQL native UUID returns uuid.UUID directly
+        if isinstance(value, uuid.UUID):
+            return value
+        
+        # Other databases return strings or hex values
+        if isinstance(value, str):
+            return uuid.UUID(value)
+        
+        return value
 
 
 # revision identifiers, used by Alembic.
@@ -276,9 +289,10 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_audit_logs_action'), table_name='audit_logs')
     op.drop_table('audit_logs')
     
-    # Drop PostgreSQL enum types
-    op.execute('DROP TYPE IF EXISTS subscriptiontier CASCADE')
-    op.execute('DROP TYPE IF EXISTS subscriptionstatus CASCADE')
-    op.execute('DROP TYPE IF EXISTS researchdepth CASCADE')
-    op.execute('DROP TYPE IF EXISTS taskstatus CASCADE')
+    # Drop PostgreSQL enum types (PostgreSQL only)
+    if op.get_bind().dialect.name == 'postgresql':
+        op.execute('DROP TYPE IF EXISTS subscriptiontier CASCADE')
+        op.execute('DROP TYPE IF EXISTS subscriptionstatus CASCADE')
+        op.execute('DROP TYPE IF EXISTS researchdepth CASCADE')
+        op.execute('DROP TYPE IF EXISTS taskstatus CASCADE')
     # ### end Alembic commands ###

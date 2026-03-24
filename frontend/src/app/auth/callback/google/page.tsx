@@ -4,7 +4,7 @@
  */
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useOAuth } from '@/hooks/useOAuth';
 
@@ -14,8 +14,15 @@ export default function GoogleCallbackPage() {
   const { handleOAuthCallback } = useOAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const validationDoneRef = useRef(false);
 
   useEffect(() => {
+    // Guard against React Strict Mode double-execution
+    if (validationDoneRef.current) {
+      return;
+    }
+    validationDoneRef.current = true;
+
     (async () => {
       try {
         const code = searchParams.get('code');
@@ -45,6 +52,10 @@ export default function GoogleCallbackPage() {
         if (!success) {
           setError('Failed to authenticate with Google');
           setLoading(false);
+        } else {
+          // Successfully authenticated - redirect to dashboard
+          setLoading(false);
+          router.push('/dashboard');
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Unknown error occurred');

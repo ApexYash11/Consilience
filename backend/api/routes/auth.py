@@ -156,7 +156,8 @@ def resend_verification(
         success, message = service.resend_verification_email(request.email)
     except Exception as e:
         logger.exception(f"Error resending verification email: {type(e).__name__}")
-        success = False
+        # Preserve anti-enumeration by returning same opaque success as when email doesn't exist
+        success = True
         message = "If email exists, verification email will be sent"
     
     return VerificationResponse(success=success, message=message)

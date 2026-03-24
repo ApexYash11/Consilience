@@ -57,11 +57,17 @@ class Settings(BaseSettings):
     @field_validator("JWT_SECRET", mode="after")
     @classmethod
     def validate_jwt_secret(cls, v: str | SecretStr) -> str | SecretStr:
-        """Validate JWT_SECRET is not the insecure default in production."""
+        """Validate JWT_SECRET is not the insecure default.
+        
+        Raises ValueError if JWT_SECRET is the insecure placeholder.
+        The runtime check in model_post_init will enforce production safety.
+        """
         secret_value = v.get_secret_value() if isinstance(v, SecretStr) else v
         if secret_value == "change-me-in-production":
-            # This is OK in development (DEBUG=True) but will be caught at initialization
-            return v
+            raise ValueError(
+                "JWT_SECRET cannot use the insecure default. "
+                "Set JWT_SECRET environment variable to a secure random value."
+            )
         return v
 
     @field_validator("GOOGLE_REDIRECT_URI", mode="before")
@@ -70,10 +76,10 @@ class Settings(BaseSettings):
         """Set GOOGLE_REDIRECT_URI from BASE_URL if not explicitly set."""
         if v is not None:
             return v
-        # If BASE_URL is set, derive redirect_uri from it
+        # If BASE_URL is set, derive redirect_uri from it (normalize trailing slashes)
         base_url = info.data.get("BASE_URL")
         if base_url:
-            return f"{base_url}/api/oauth/google/callback"
+            return f"{base_url.rstrip('/')}/api/oauth/google/callback"
         # Default for development
         return "http://localhost:8000/api/oauth/google/callback"
 
@@ -83,10 +89,10 @@ class Settings(BaseSettings):
         """Set GITHUB_REDIRECT_URI from BASE_URL if not explicitly set."""
         if v is not None:
             return v
-        # If BASE_URL is set, derive redirect_uri from it
+        # If BASE_URL is set, derive redirect_uri from it (normalize trailing slashes)
         base_url = info.data.get("BASE_URL")
         if base_url:
-            return f"{base_url}/api/oauth/github/callback"
+            return f"{base_url.rstrip('/')}/api/oauth/github/callback"
         # Default for development
         return "http://localhost:8000/api/oauth/github/callback"
 
@@ -96,17 +102,15 @@ class Settings(BaseSettings):
         """Set BACKEND_OAUTH_CALLBACK_URL from BASE_URL if not explicitly set."""
         if v is not None:
             return v
-        # If BASE_URL is set, derive callback URL from it
+        # If BASE_URL is set, derive callback URL from it (normalize trailing slashes)
         base_url = info.data.get("BASE_URL")
         if base_url:
-            return f"{base_url}/api/auth/oauth/callback"
+            return f"{base_url.rstrip('/')}/api/auth/oauth/callback"
         # Default for development
         return "http://localhost:8000/api/auth/oauth/callback"
 
-    def __post_init__(self):
-        """Validate critical settings at startup."""
-        import os
-        
+    def model_post_init(self, __context=None) -> None:
+        """Validate critical settings at startup (Pydantic v2 hook)."""
         # Validate JWT_SECRET is not the insecure default when DEBUG=False
         secret_value = (
             self.JWT_SECRET.get_secret_value()

@@ -18,11 +18,14 @@ def _parse_smtp_port() -> int:
     """
     Parse SMTP_PORT environment variable with error handling.
     
+    Returns the SMTP port number, defaulting to 587 if not set.
+    Converts ValueError from invalid port to RuntimeError for consistent error handling.
+    
     Returns:
-        Port number (default 587 if not set or invalid)
+        Port number (defaults to 587 if not set)
         
     Raises:
-        RuntimeError: If SMTP_PORT is set but cannot be parsed
+        RuntimeError: If SMTP_PORT is set but cannot be parsed as an integer
     """
     port_str = os.getenv("SMTP_PORT", "587")
     try:

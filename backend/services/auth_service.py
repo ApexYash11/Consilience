@@ -275,8 +275,8 @@ class AuthService:
         ).scalar_one_or_none()
         
         if existing_user:
-            # Don't reveal that email exists (security best practice)
-            raise ValueError("Email is already registered")
+            # Don't reveal that email exists (security best practice - anti-enumeration)
+            raise ValueError("Unable to create account")
         
         # Hash password
         hashed_password = self.hash_password(user_data.password)
