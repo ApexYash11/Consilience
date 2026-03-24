@@ -27,10 +27,24 @@ export default function GoogleCallbackPage() {
           return;
         }
 
+        // Validate state token for CSRF protection
+        const storedState = sessionStorage.getItem('oauth_state_google');
+        if (!state || !storedState || state !== storedState) {
+          setError('State mismatch or missing - possible CSRF attack');
+          setLoading(false);
+          // Clear the stored state
+          sessionStorage.removeItem('oauth_state_google');
+          return;
+        }
+
+        // Clear the stored state after validation (single-use)
+        sessionStorage.removeItem('oauth_state_google');
+
         const success = await handleOAuthCallback('google', code);
 
         if (!success) {
           setError('Failed to authenticate with Google');
+          setLoading(false);
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Unknown error occurred');

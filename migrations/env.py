@@ -28,6 +28,8 @@ target_metadata = Base.metadata
 # Get database URL from environment (handles both sync and async URLs)
 def get_sqlalchemy_url() -> str:
     """Get sync SQLAlchemy database URL from environment."""
+    from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+    
     db_url = os.getenv("DATABASE_URL")
     if not db_url:
         raise ValueError(
@@ -39,10 +41,32 @@ def get_sqlalchemy_url() -> str:
     if "postgresql+asyncpg://" in db_url:
         db_url = db_url.replace("postgresql+asyncpg://", "postgresql://")
     
-    # Remove query parameters that psycopg2 doesn't support
+    # Parse and clean query parameters - remove asyncpg-specific ones but keep psycopg2-compatible ones
     if "?" in db_url:
-        # Keep only supported parameters
-        db_url = db_url.split("?")[0]
+        parsed = urlparse(db_url)
+        query_params = parse_qs(parsed.query, keep_blank_values=True)
+        
+        # Remove asyncpg-specific parameters
+        params_to_remove = ['async_fallback', 'sslrootcert']
+        for param in params_to_remove:
+            query_params.pop(param, None)
+        
+        # Rebuild query string
+        new_query = urlencode(
+            {k: v[0] if len(v) == 1 else v for k, v in query_params.items()},
+            doseq=True
+        )
+        
+        # Reassemble URL
+        new_parsed = (
+            parsed.scheme,
+            parsed.netloc,
+            parsed.path,
+            parsed.params,
+            new_query,
+            parsed.fragment
+        )
+        db_url = urlunparse(new_parsed)
     
     return db_url
 

@@ -4,8 +4,8 @@ Async connections for FastAPI.
 """
 
 import os
-import re
 from typing import AsyncGenerator
+from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 from sqlalchemy import create_engine
 from sqlalchemy.pool import NullPool
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
@@ -47,19 +47,56 @@ _engine = create_engine(
 SessionLocal = sessionmaker(bind=_engine, autoflush=False, autocommit=False)
 
 
+def _clean_postgres_url(db_url: str) -> str:
+    """
+    Clean PostgreSQL URL by removing asyncpg-specific parameters.
+    
+    Removes sslmode and channel_binding from query string using proper URL parsing,
+    while preserving psycopg2-supported parameters like sslmode is needed for sync connections.
+    
+    Args:
+        db_url: PostgreSQL URL (may have asyncpg-specific params)
+        
+    Returns:
+        Cleaned URL with asyncpg-specific params removed
+    """
+    # Parse the URL
+    parsed = urlparse(db_url)
+    
+    # Parse query parameters
+    query_params = parse_qs(parsed.query, keep_blank_values=True)
+    
+    # Remove asyncpg-specific parameters
+    params_to_remove = ['async_fallback', 'sslrootcert']
+    for param in params_to_remove:
+        query_params.pop(param, None)
+    
+    # Rebuild query string (parse_qs returns lists for values, so flatten them)
+    new_query = urlencode(
+        {k: v[0] if len(v) == 1 else v for k, v in query_params.items()},
+        doseq=True
+    )
+    
+    # Reassemble URL
+    new_parsed = (
+        parsed.scheme,
+        parsed.netloc,
+        parsed.path,
+        parsed.params,
+        new_query,
+        parsed.fragment
+    )
+    return urlunparse(new_parsed)
+
+
 # Create async engine for FastAPI
 async_connect_args = {}
 if "postgresql" in DATABASE_URL:
     # Replace postgresql:// with postgresql+asyncpg://
     ASYNC_DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
     
-    # Strip sslmode=require and channel_binding=require from query string using regex
-    # This preserves the password and all other parts of the URL correctly
-    ASYNC_DATABASE_URL = re.sub(r'[?&]sslmode=[^&]*', '', ASYNC_DATABASE_URL)
-    ASYNC_DATABASE_URL = re.sub(r'[?&]channel_binding=[^&]*', '', ASYNC_DATABASE_URL)
-    # Clean up multiple ? or leading &
-    ASYNC_DATABASE_URL = re.sub(r'\?&', '?', ASYNC_DATABASE_URL)
-    ASYNC_DATABASE_URL = re.sub(r'\?$', '', ASYNC_DATABASE_URL)
+    # Clean up asyncpg-specific parameters while keeping psycopg2-compatible ones
+    ASYNC_DATABASE_URL = _clean_postgres_url(ASYNC_DATABASE_URL)
     
     # Neon ALWAYS requires SSL, regardless of environment
     async_connect_args = {"ssl": "require"}

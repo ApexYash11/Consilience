@@ -65,6 +65,9 @@ async def oauth_callback(
             return await _handle_google_callback(request.code, service)
         else:
             return await _handle_github_callback(request.code, service)
+    except HTTPException:
+        # Re-raise HTTP exceptions to preserve status codes
+        raise
     except Exception as e:
         logger.error(f"OAuth callback failed for {request.provider}: {e}")
         raise HTTPException(
@@ -129,7 +132,7 @@ async def _handle_google_callback(code: str, service: OAuthService) -> TokenResp
             detail="Failed to generate token",
         )
 
-    logger.info(f"Google OAuth successful for {email}")
+    logger.info(f"Google OAuth successful for user {user.id}")
     return TokenResponse(access_token=jwt_token)
 
 
@@ -190,12 +193,12 @@ async def _handle_github_callback(code: str, service: OAuthService) -> TokenResp
             detail="Failed to generate token",
         )
 
-    logger.info(f"GitHub OAuth successful for {email}")
+    logger.info(f"GitHub OAuth successful for user {user.id}")
     return TokenResponse(access_token=jwt_token)
 
 
 @router.get("/authorize/google")
-def get_google_auth_url():
+def get_google_auth_url(state: str | None = None):
     """Get Google OAuth authorization URL."""
     if not _settings.GOOGLE_CLIENT_ID:
         raise HTTPException(
@@ -204,6 +207,11 @@ def get_google_auth_url():
         )
 
     from urllib.parse import urlencode
+    import secrets
+
+    # If no state provided, generate one
+    if not state:
+        state = secrets.token_urlsafe(32)
 
     params = {
         "client_id": _settings.GOOGLE_CLIENT_ID,
@@ -211,13 +219,14 @@ def get_google_auth_url():
         "response_type": "code",
         "scope": "openid profile email",
         "access_type": "offline",
+        "state": state,
     }
     auth_url = "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode(params)
-    return {"auth_url": auth_url}
+    return {"auth_url": auth_url, "state": state}
 
 
 @router.get("/authorize/github")
-def get_github_auth_url():
+def get_github_auth_url(state: str | None = None):
     """Get GitHub OAuth authorization URL."""
     if not _settings.GITHUB_CLIENT_ID:
         raise HTTPException(
@@ -226,12 +235,18 @@ def get_github_auth_url():
         )
 
     from urllib.parse import urlencode
+    import secrets
+
+    # If no state provided, generate one
+    if not state:
+        state = secrets.token_urlsafe(32)
 
     params = {
         "client_id": _settings.GITHUB_CLIENT_ID,
         "redirect_uri": _settings.GITHUB_REDIRECT_URI,
         "scope": "user:email",
         "allow_signup": "true",
+        "state": state,
     }
     auth_url = "https://github.com/login/oauth/authorize?" + urlencode(params)
-    return {"auth_url": auth_url}
+    return {"auth_url": auth_url, "state": state}

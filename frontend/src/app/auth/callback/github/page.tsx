@@ -27,10 +27,24 @@ export default function GitHubCallbackPage() {
           return;
         }
 
+        // Validate state token for CSRF protection
+        const storedState = sessionStorage.getItem('oauth_state_github');
+        if (!state || !storedState || state !== storedState) {
+          setError('State mismatch or missing - possible CSRF attack');
+          setLoading(false);
+          // Clear the stored state
+          sessionStorage.removeItem('oauth_state_github');
+          return;
+        }
+
+        // Clear the stored state after validation (single-use)
+        sessionStorage.removeItem('oauth_state_github');
+
         const success = await handleOAuthCallback('github', code);
 
         if (!success) {
           setError('Failed to authenticate with GitHub');
+          setLoading(false);
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Unknown error occurred');

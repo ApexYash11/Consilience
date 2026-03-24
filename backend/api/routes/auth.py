@@ -105,6 +105,7 @@ def login(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
+        logger.exception(f"Error in login: {type(e).__name__}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -151,6 +152,11 @@ def resend_verification(
     Note:
         Always returns 200 for security (doesn't reveal if email exists)
     """
-    success, message = service.resend_verification_email(request.email)
+    try:
+        success, message = service.resend_verification_email(request.email)
+    except Exception as e:
+        logger.exception(f"Error resending verification email: {type(e).__name__}")
+        success = False
+        message = "If email exists, verification email will be sent"
     
     return VerificationResponse(success=success, message=message)

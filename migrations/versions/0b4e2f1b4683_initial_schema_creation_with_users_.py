@@ -6,17 +6,55 @@ Create Date: 2026-03-24 17:43:34.948532
 
 """
 from typing import Sequence, Union
-import sys
-from pathlib import Path
+import uuid
 
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.types import TypeDecorator, CHAR
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 
-# Add project root to path for imports
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from backend.database.schema import GUID
+
+# Define GUID TypeDecorator locally to avoid external dependencies
+class GUID(TypeDecorator):
+    """Platform-independent GUID type for storing UUID values.
+    
+    Uses CHAR(32) on non-PostgreSQL and PostgreSQL UUID type on PostgreSQL.
+    """
+    
+    impl = CHAR
+    cache_ok = True
+
+    def load_dialect_impl(self, dialect):
+        """Use native UUID type on PostgreSQL."""
+        if dialect.name == 'postgresql':
+            return dialect.type_descriptor(PG_UUID())
+        return dialect.type_descriptor(CHAR(32))
+
+    def process_bind_param(self, value, dialect):
+        """Convert UUID to string for storage."""
+        if value is None:
+            return value
+        
+        if isinstance(value, uuid.UUID):
+            if dialect.name == 'postgresql':
+                return str(value)
+            else:
+                return value.hex
+        
+        if isinstance(value, str):
+            if dialect.name == 'postgresql':
+                return value
+            else:
+                return uuid.UUID(value).hex
+        
+        return value
+
+    def process_result_value(self, value, dialect):
+        """Convert stored string back to UUID."""
+        if value is None:
+            return value
+        return uuid.UUID(value)
+
 
 # revision identifiers, used by Alembic.
 revision: str = '0b4e2f1b4683'
@@ -237,4 +275,10 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_audit_logs_resource_id'), table_name='audit_logs')
     op.drop_index(op.f('ix_audit_logs_action'), table_name='audit_logs')
     op.drop_table('audit_logs')
+    
+    # Drop PostgreSQL enum types
+    op.execute('DROP TYPE IF EXISTS subscriptiontier CASCADE')
+    op.execute('DROP TYPE IF EXISTS subscriptionstatus CASCADE')
+    op.execute('DROP TYPE IF EXISTS researchdepth CASCADE')
+    op.execute('DROP TYPE IF EXISTS taskstatus CASCADE')
     # ### end Alembic commands ###

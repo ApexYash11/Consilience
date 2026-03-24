@@ -4,6 +4,7 @@
  */
 import { useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { generateRandomString } from '@/utils/crypto';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -22,10 +23,22 @@ export function useOAuth() {
   const getAuthorizationUrl = useCallback(
     async (provider: 'google' | 'github'): Promise<string | null> => {
       try {
+        // Generate a cryptographically secure random state token
+        const state = generateRandomString(32);
+        
+        // Store state in sessionStorage for validation on callback
+        const storageKey = `oauth_state_${provider}`;
+        sessionStorage.setItem(storageKey, state);
+
+        // Request auth URL with state parameter
         const response = await fetch(
-          `${API_BASE_URL}/api/auth/oauth/authorize/${provider}`
+          `${API_BASE_URL}/api/auth/oauth/authorize/${provider}?state=${encodeURIComponent(state)}`
         );
-        if (!response.ok) throw new Error(`Failed to get ${provider} auth URL`);
+        
+        if (!response.ok) {
+          throw new Error(`Failed to get ${provider} auth URL`);
+        }
+        
         const data = await response.json();
         return data.auth_url;
       } catch (error) {
@@ -66,8 +79,26 @@ export function useOAuth() {
         });
 
         if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.detail || `${provider} authentication failed`);
+          // Try to parse JSON error response, fall back to text/status
+          let errorMessage = `${provider} authentication failed`;
+          try {
+            const error = await response.json();
+            errorMessage = error.detail || errorMessage;
+          } catch {
+            // If JSON parsing fails, try text
+            try {
+              const text = await response.text();
+              if (text) {
+                errorMessage = text;
+              } else {
+                errorMessage = `HTTP ${response.status} ${response.statusText}`;
+              }
+            } catch {
+              // Fall back to status info
+              errorMessage = `HTTP ${response.status} ${response.statusText}`;
+            }
+          }
+          throw new Error(errorMessage);
         }
 
         const data: OAuthToken = await response.json();

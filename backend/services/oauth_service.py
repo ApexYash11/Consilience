@@ -15,6 +15,20 @@ from .auth_service import AuthService
 logger = logging.getLogger(__name__)
 
 
+def _get_secret_value(value) -> str:
+    """Safely extract secret value from SecretStr or return str.
+    
+    Args:
+        value: Either a string or a SecretStr object
+        
+    Returns:
+        The string value
+    """
+    if hasattr(value, 'get_secret_value'):
+        return value.get_secret_value()
+    return str(value)
+
+
 class OAuthService:
     """Handle OAuth authentication for Google and GitHub."""
 
@@ -29,14 +43,14 @@ class OAuthService:
             logger.error("Google OAuth credentials not configured")
             return None
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=10.0) as client:
             try:
                 response = await client.post(
                     "https://oauth2.googleapis.com/token",
                     data={
                         "code": code,
                         "client_id": self.settings.GOOGLE_CLIENT_ID,
-                        "client_secret": self.settings.GOOGLE_CLIENT_SECRET,
+                        "client_secret": _get_secret_value(self.settings.GOOGLE_CLIENT_SECRET),
                         "redirect_uri": self.settings.GOOGLE_REDIRECT_URI,
                         "grant_type": "authorization_code",
                     },
@@ -49,7 +63,7 @@ class OAuthService:
 
     async def get_google_user_info(self, access_token: str) -> Optional[dict]:
         """Get user info from Google using access token."""
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=10.0) as client:
             try:
                 response = await client.get(
                     "https://www.googleapis.com/oauth2/v2/userinfo",
@@ -67,14 +81,14 @@ class OAuthService:
             logger.error("GitHub OAuth credentials not configured")
             return None
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=10.0) as client:
             try:
                 response = await client.post(
                     "https://github.com/login/oauth/access_token",
                     data={
                         "code": code,
                         "client_id": self.settings.GITHUB_CLIENT_ID,
-                        "client_secret": self.settings.GITHUB_CLIENT_SECRET,
+                        "client_secret": _get_secret_value(self.settings.GITHUB_CLIENT_SECRET),
                         "redirect_uri": self.settings.GITHUB_REDIRECT_URI,
                     },
                     headers={"Accept": "application/json"},
@@ -87,7 +101,7 @@ class OAuthService:
 
     async def get_github_user_info(self, access_token: str) -> Optional[dict]:
         """Get user info from GitHub using access token."""
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=10.0) as client:
             try:
                 response = await client.get(
                     "https://api.github.com/user",
@@ -115,7 +129,7 @@ class OAuthService:
             existing_user = self.db.query(UserDB).filter(UserDB.email == email).first()
 
             if existing_user:
-                logger.info(f"OAuth user {email} already exists via {provider}")
+                logger.info(f"OAuth user {existing_user.id} already exists via {provider}")
                 return existing_user
 
             # Create new OAuth user
@@ -138,17 +152,20 @@ class OAuthService:
             self.db.commit()
             self.db.refresh(new_user)
 
-            logger.info(f"Created new OAuth user: {email} via {provider}")
+            logger.info(f"Created new OAuth user {new_user.id} via {provider}")
             return new_user
 
         except Exception as e:
-            logger.error(f"Failed to get/create OAuth user {email}: {e}")
+            logger.error(f"Failed to get/create OAuth user via {provider}: {e}")
             self.db.rollback()
             return None
 
     def generate_oauth_jwt_token(self, user: UserDB) -> str:
         """Generate JWT token for OAuth user."""
         try:
+            # Handle SecretStr if JWT_SECRET is wrapped
+            secret_value = _get_secret_value(self.settings.JWT_SECRET)
+            
             payload = {
                 "sub": str(user.id),
                 "email": user.email,
@@ -156,7 +173,7 @@ class OAuthService:
             }
             token = jwt.encode(
                 payload,
-                self.settings.JWT_SECRET,
+                secret_value,
                 algorithm=self.settings.JWT_ALGORITHM,
             )
             return token

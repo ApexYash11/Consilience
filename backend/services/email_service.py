@@ -8,9 +8,48 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta
 from typing import Optional
+from urllib.parse import quote
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_smtp_port() -> int:
+    """
+    Parse SMTP_PORT environment variable with error handling.
+    
+    Returns:
+        Port number (default 587 if not set or invalid)
+        
+    Raises:
+        RuntimeError: If SMTP_PORT is set but cannot be parsed
+    """
+    port_str = os.getenv("SMTP_PORT", "587")
+    try:
+        return int(port_str)
+    except ValueError:
+        raise RuntimeError(
+            f"Invalid SMTP_PORT value: '{port_str}'. Must be a numeric port number."
+        )
+
+
+def _mask_email(email: str) -> str:
+    """
+    Mask email address for safe logging.
+    
+    Examples:
+        user@example.com -> u***@example.com
+        longname@example.com -> l***@example.com
+    """
+    if not email or "@" not in email:
+        return "[invalid-email]"
+    
+    local, domain = email.split("@", 1)
+    if len(local) <= 1:
+        masked_local = "*"
+    else:
+        masked_local = local[0] + "*" * (len(local) - 1)
+    return f"{masked_local}@{domain}"
 
 
 class EmailService:
@@ -18,7 +57,7 @@ class EmailService:
     
     # Email configuration
     SMTP_HOST = os.getenv("SMTP_HOST", "localhost")
-    SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+    SMTP_PORT = _parse_smtp_port()
     SMTP_USER = os.getenv("SMTP_USER", "")
     SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
     FROM_EMAIL = os.getenv("FROM_EMAIL", "noreply@consilience.dev")
@@ -58,7 +97,8 @@ class EmailService:
         try:
             # Skip in development if SMTP not configured
             if not EmailService.SMTP_USER or EmailService.SMTP_HOST == "localhost":
-                logger.info(f"[DEV MODE] Email to {to_email}: {subject}")
+                masked_recipient = _mask_email(to_email)
+                logger.debug(f"[DEV MODE] Email to {masked_recipient}: {subject}")
                 return True
             
             # Create message
@@ -74,18 +114,24 @@ class EmailService:
             message.attach(MIMEText(plain_text, "plain"))
             message.attach(MIMEText(html_content, "html"))
             
-            # Send via SMTP
-            with smtplib.SMTP(EmailService.SMTP_HOST, EmailService.SMTP_PORT) as server:
+            # Send via SMTP with timeout
+            with smtplib.SMTP(
+                EmailService.SMTP_HOST,
+                EmailService.SMTP_PORT,
+                timeout=10
+            ) as server:
                 server.starttls()
                 if EmailService.SMTP_USER:
                     server.login(EmailService.SMTP_USER, EmailService.SMTP_PASSWORD)
                 server.send_message(message)
             
-            logger.info(f"Email sent to {to_email}")
+            masked_recipient = _mask_email(to_email)
+            logger.info(f"Email sent to {masked_recipient}")
             return True
             
         except Exception as e:
-            logger.error(f"Failed to send email to {to_email}: {str(e)}")
+            masked_recipient = _mask_email(to_email)
+            logger.error(f"Failed to send email to {masked_recipient}: {str(e)}")
             return False
     
     @classmethod
@@ -100,7 +146,9 @@ class EmailService:
         Returns:
             True if sent successfully
         """
-        verification_url = f"{cls.APP_URL}/verify-email?token={verification_token}&email={email}"
+        # URL-encode the email to handle special characters
+        encoded_email = quote(email, safe='')
+        verification_url = f"{cls.APP_URL}/verify-email?token={verification_token}&email={encoded_email}"
         
         html_content = f"""
         <html>

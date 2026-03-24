@@ -53,7 +53,11 @@ class AuthService:
     
     def verify_password(self, password: str, hashed_password: str) -> bool:
         """Verify password against bcrypt hash."""
-        return bcrypt.checkpw(password.encode('utf-8'), hashed_password.encode('utf-8'))
+        try:
+            return bcrypt.checkpw(password.encode('utf-8'), hashed_password.encode('utf-8'))
+        except (ValueError, TypeError):
+            # Invalid hash format or encoding issues
+            return False
     
     def validate_password_strength(self, password: str) -> tuple[bool, Optional[str]]:
         """
@@ -233,8 +237,11 @@ class AuthService:
             # Create new verification if doesn't exist
             token = self.create_verification_token(str(user.id), user.email)  # type: ignore
         else:
-            token = verification.token  # type: ignore
+            # Generate a fresh token for resend instead of reusing the old one
+            token = EmailService.generate_verification_token()
+            verification.token = token  # type: ignore
             verification.last_sent_at = datetime.utcnow()  # type: ignore
+            verification.expires_at = datetime.utcnow() + timedelta(hours=EmailService.VERIFICATION_EXPIRY_HOURS)  # type: ignore
             self.db.commit()
         
         # Send email
@@ -268,7 +275,8 @@ class AuthService:
         ).scalar_one_or_none()
         
         if existing_user:
-            raise ValueError(f"Email {user_data.email} is already registered")
+            # Don't reveal that email exists (security best practice)
+            raise ValueError("Email is already registered")
         
         # Hash password
         hashed_password = self.hash_password(user_data.password)
@@ -332,9 +340,9 @@ class AuthService:
         if not self.verify_password(credentials.password, user.hashed_password):  # type: ignore
             return None
         
-        # Check if user is active
+        # Check if user is active - return None instead of raising to avoid leaking account state
         if not user.is_active:  # type: ignore
-            raise ValueError("Account is inactive")
+            return None
         
         # Update last login timestamp
         user.last_login = datetime.utcnow()  # type: ignore

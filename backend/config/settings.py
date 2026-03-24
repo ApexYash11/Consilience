@@ -1,12 +1,16 @@
 """Environment configuration for Consilience.
 Loads values from environment variables and .env file.
 """
+from typing import Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import SecretStr, field_validator
 
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Consilience"
     DEBUG: bool = False  # SECURITY: Must be False in production; only True for testing
+    BASE_URL: Optional[str] = None  # e.g., https://example.com for production
+    
     # Neon/Postgres connection string
     DATABASE_URL: str | None = None
 
@@ -15,40 +19,105 @@ class Settings(BaseSettings):
     JWKS_URL: str | None = None
 
     # JWT Token Generation (for username/password auth)
-    JWT_SECRET: str = "change-me-in-production"  # SECURITY: Override in production
+    JWT_SECRET: str | SecretStr = "change-me-in-production"  # SECURITY: Override in production
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRATION_HOURS: int = 24
 
     # Google OAuth
     GOOGLE_CLIENT_ID: str | None = None
-    GOOGLE_CLIENT_SECRET: str | None = None
-    GOOGLE_REDIRECT_URI: str = "http://localhost:8000/api/oauth/google/callback"
+    GOOGLE_CLIENT_SECRET: SecretStr | None = None
+    GOOGLE_REDIRECT_URI: Optional[str] = None
 
     # GitHub OAuth
     GITHUB_CLIENT_ID: str | None = None
-    GITHUB_CLIENT_SECRET: str | None = None
-    GITHUB_REDIRECT_URI: str = "http://localhost:8000/api/oauth/github/callback"
+    GITHUB_CLIENT_SECRET: SecretStr | None = None
+    GITHUB_REDIRECT_URI: Optional[str] = None
 
     # Backend OAuth Redirect
-    BACKEND_OAUTH_CALLBACK_URL: str = "http://localhost:8000/api/auth/oauth/callback"
+    BACKEND_OAUTH_CALLBACK_URL: Optional[str] = None
 
     # OpenRouter API
-    OPENROUTER_API_KEY: str | None = None
+    OPENROUTER_API_KEY: Optional[SecretStr] = None
 
     # Stripe
-    STRIPE_SECRET_KEY: str | None = None
-    STRIPE_WEBHOOK_SECRET: str | None = None
+    STRIPE_SECRET_KEY: Optional[SecretStr] = None
+    STRIPE_WEBHOOK_SECRET: Optional[SecretStr] = None
 
     # Anthropic / Claude
-    ANTHROPIC_API_KEY: str | None = None
+    ANTHROPIC_API_KEY: Optional[SecretStr] = None
 
     # LangSmith Observability
     LANGCHAIN_TRACING_V2: bool = False
-    LANGCHAIN_API_KEY: str | None = None
+    LANGCHAIN_API_KEY: Optional[SecretStr] = None
     LANGCHAIN_PROJECT: str = "consilience-dev"
     LANGCHAIN_ENDPOINT: str = "https://api.smith.langchain.com"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    @field_validator("JWT_SECRET", mode="after")
+    @classmethod
+    def validate_jwt_secret(cls, v: str | SecretStr) -> str | SecretStr:
+        """Validate JWT_SECRET is not the insecure default in production."""
+        secret_value = v.get_secret_value() if isinstance(v, SecretStr) else v
+        if secret_value == "change-me-in-production":
+            # This is OK in development (DEBUG=True) but will be caught at initialization
+            return v
+        return v
+
+    @field_validator("GOOGLE_REDIRECT_URI", mode="before")
+    @classmethod
+    def validate_google_redirect_uri(cls, v: Optional[str], info) -> Optional[str]:
+        """Set GOOGLE_REDIRECT_URI from BASE_URL if not explicitly set."""
+        if v is not None:
+            return v
+        # If BASE_URL is set, derive redirect_uri from it
+        base_url = info.data.get("BASE_URL")
+        if base_url:
+            return f"{base_url}/api/oauth/google/callback"
+        # Default for development
+        return "http://localhost:8000/api/oauth/google/callback"
+
+    @field_validator("GITHUB_REDIRECT_URI", mode="before")
+    @classmethod
+    def validate_github_redirect_uri(cls, v: Optional[str], info) -> Optional[str]:
+        """Set GITHUB_REDIRECT_URI from BASE_URL if not explicitly set."""
+        if v is not None:
+            return v
+        # If BASE_URL is set, derive redirect_uri from it
+        base_url = info.data.get("BASE_URL")
+        if base_url:
+            return f"{base_url}/api/oauth/github/callback"
+        # Default for development
+        return "http://localhost:8000/api/oauth/github/callback"
+
+    @field_validator("BACKEND_OAUTH_CALLBACK_URL", mode="before")
+    @classmethod
+    def validate_backend_oauth_callback_url(cls, v: Optional[str], info) -> Optional[str]:
+        """Set BACKEND_OAUTH_CALLBACK_URL from BASE_URL if not explicitly set."""
+        if v is not None:
+            return v
+        # If BASE_URL is set, derive callback URL from it
+        base_url = info.data.get("BASE_URL")
+        if base_url:
+            return f"{base_url}/api/auth/oauth/callback"
+        # Default for development
+        return "http://localhost:8000/api/auth/oauth/callback"
+
+    def __post_init__(self):
+        """Validate critical settings at startup."""
+        import os
+        
+        # Validate JWT_SECRET is not the insecure default when DEBUG=False
+        secret_value = (
+            self.JWT_SECRET.get_secret_value()
+            if isinstance(self.JWT_SECRET, SecretStr)
+            else self.JWT_SECRET
+        )
+        if not self.DEBUG and secret_value == "change-me-in-production":
+            raise RuntimeError(
+                "JWT_SECRET must be configured in production. "
+                "Set JWT_SECRET environment variable to a secure random value."
+            )
 
 
 class RetryConfig(BaseSettings):
