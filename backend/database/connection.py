@@ -26,15 +26,47 @@ REQUIRE_SSL = ENVIRONMENT == "production"
 DATABASE_URL: str = os.getenv("DATABASE_URL") or "sqlite:///./consilience.db"
 
 # Create sync engine (kept for backward compatibility if needed)
+_sync_connect_args = {}
 if "postgresql" in DATABASE_URL:
     # Use standard PostgreSQL connection
     SYNC_DATABASE_URL = DATABASE_URL.replace("postgresql+asyncpg", "postgresql")
+    
+    # Extract sslmode from URL query string and pass as connect_arg for psycopg2
+    parsed = urlparse(DATABASE_URL)
+    query_params = parse_qs(parsed.query, keep_blank_values=True)
+    
+    if 'sslmode' in query_params:
+        sslmode = query_params['sslmode'][0]
+        if sslmode == 'require':
+            _sync_connect_args['sslmode'] = 'require'
+        # Remove from URL since psycopg2 gets it from connect_args
+        query_params.pop('sslmode', None)
+        
+        # Rebuild URL without sslmode
+        new_query = urlencode(
+            {k: v[0] if len(v) == 1 else v for k, v in query_params.items()},
+            doseq=True
+        )
+        if new_query:
+            SYNC_DATABASE_URL = urlunparse((
+                parsed.scheme,
+                parsed.netloc,
+                parsed.path,
+                parsed.params,
+                new_query,
+                parsed.fragment
+            ))
+        else:
+            SYNC_DATABASE_URL = urlunparse((
+                parsed.scheme,
+                parsed.netloc,
+                parsed.path,
+                parsed.params,
+                '',
+                parsed.fragment
+            ))
 else:
     SYNC_DATABASE_URL = DATABASE_URL
-
-# For psycopg2, sslmode in URL query string works fine
-# Don't use connect_args for postgresql - let the URL handle it
-_sync_connect_args = {}
 
 _engine = create_engine(
     SYNC_DATABASE_URL,
@@ -51,7 +83,7 @@ def _clean_postgres_url(db_url: str) -> str:
     """
     Clean PostgreSQL URL by removing asyncpg-specific parameters.
     
-    Removes async_fallback and sslrootcert from query string using proper URL parsing.
+    Removes asyncpg-incompatible query params using proper URL parsing.
     These parameters are specific to asyncpg and should not be passed to the async driver.
     
     Args:
@@ -66,8 +98,8 @@ def _clean_postgres_url(db_url: str) -> str:
     # Parse query parameters
     query_params = parse_qs(parsed.query, keep_blank_values=True)
     
-    # Remove asyncpg-specific parameters
-    params_to_remove = ['async_fallback', 'sslrootcert']
+    # Remove asyncpg-incompatible parameters
+    params_to_remove = ['async_fallback', 'sslrootcert', 'sslmode']
     for param in params_to_remove:
         query_params.pop(param, None)
     
@@ -94,12 +126,19 @@ async_connect_args = {}
 if "postgresql" in DATABASE_URL:
     # Replace postgresql:// with postgresql+asyncpg://
     ASYNC_DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
+
+    # Map sslmode from URL query to asyncpg-compatible connect arg.
+    parsed = urlparse(DATABASE_URL)
+    query_params = parse_qs(parsed.query, keep_blank_values=True)
+    sslmode = (query_params.get("sslmode") or [None])[0]
+    if sslmode == "require":
+        async_connect_args = {"ssl": "require"}
     
     # Clean up asyncpg-specific parameters while keeping psycopg2-compatible ones
     ASYNC_DATABASE_URL = _clean_postgres_url(ASYNC_DATABASE_URL)
     
-    # Only require SSL in production; others use the URL's sslmode parameter
-    if REQUIRE_SSL:
+    # Enforce SSL in production even if URL omitted sslmode.
+    if REQUIRE_SSL and "ssl" not in async_connect_args:
         async_connect_args = {"ssl": "require"}
 elif "sqlite" in DATABASE_URL and "aiosqlite" not in DATABASE_URL:
     ASYNC_DATABASE_URL = DATABASE_URL.replace("sqlite://", "sqlite+aiosqlite://")

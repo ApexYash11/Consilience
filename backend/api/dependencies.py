@@ -7,12 +7,14 @@ from typing import AsyncGenerator, Optional
 from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.security import get_security_manager, extract_bearer_token
-from ..database.connection import get_async_session
+from ..core.security import extract_bearer_token
+from ..database.connection import get_async_session, get_db_session
 from ..models.user import CurrentUser
 from ..models.research import ResearchDepth
 from ..services.cost_service import CostService
 from ..services.rate_limiter import get_rate_limiter
+from ..services.auth_service import AuthService
+from ..config.settings import Settings
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:  # type: ignore
     """
@@ -24,17 +26,17 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:  # type: ignore
 
 
 async def get_current_user(
-    authorization: Optional[str] = Header(None), db: AsyncSession = Depends(get_db)
+    authorization: Optional[str] = Header(None), db = Depends(get_db_session)
 ) -> CurrentUser:
     """
     Dependency to get current authenticated user.
 
-    Validates the Neon JWT token from Authorization header and returns
-    user context with ID, email, tier, and roles.
+    Validates the JWT token from Authorization header (email/password login)
+    and returns user context with ID, email, tier, and roles.
 
     Args:
         authorization: Authorization header with Bearer token
-        db: Database session (asyncio)
+        db: Database session for user lookup if needed
 
     Returns:
         CurrentUser object with user_id, email, tier, roles
@@ -42,29 +44,47 @@ async def get_current_user(
     Raises:
         HTTPException: 401 if token is invalid or missing
     """
-    # Extract and validate token
+    # Extract bearer token
     token = extract_bearer_token(authorization)
-    security_mgr = get_security_manager()
-
-    # Verify JWT signature and claims
-    payload = await security_mgr.verify_token(token)
-
-    # Extract user info
-    user_info = security_mgr.extract_user_info(payload)
-
+    
+    # Initialize AuthService and verify token
+    settings = Settings()
+    auth_service = AuthService(db, settings)
+    
+    # Verify JWT and get payload
+    payload = auth_service.verify_token(token)
+    
+    if payload is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token"
+        )
+    
+    # Extract user info from payload
+    user_id = payload.get("sub")
+    email = payload.get("email")
+    tier = payload.get("tier", "free")
+    
+    if not user_id or not email:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token payload"
+        )
+    
     # Create current user object
     current_user = CurrentUser(
-        user_id=user_info["user_id"],
-        email=user_info["email"],
-        tier=user_info["tier"],
-        roles=user_info["roles"],
+        user_id=user_id,
+        email=email,
+        tier=tier,
+        roles=[]  # AuthService tokens don't include roles
     )
-
+    
     return current_user
 
 
 async def get_optional_user(
     authorization: Optional[str] = Header(None),
+    db = Depends(get_db_session)
 ) -> Optional[CurrentUser]:
     """
     Dependency for optional authentication.
@@ -75,20 +95,33 @@ async def get_optional_user(
 
     try:
         token = extract_bearer_token(authorization)
-        security_mgr = get_security_manager()
-        payload = await security_mgr.verify_token(token)
-        user_info = security_mgr.extract_user_info(payload)
-
-        return CurrentUser(
-            user_id=user_info["user_id"],
-            email=user_info["email"],
-            tier=user_info["tier"],
-            roles=user_info["roles"],
-        )
-    except HTTPException as exc:
-        if exc.status_code == status.HTTP_401_UNAUTHORIZED:
+        
+        # Initialize AuthService and verify token
+        settings = Settings()
+        auth_service = AuthService(db, settings)
+        
+        # Verify JWT and get payload
+        payload = auth_service.verify_token(token)
+        
+        if payload is None:
             return None
-        raise exc
+        
+        # Extract user info from payload
+        user_id = payload.get("sub")
+        email = payload.get("email")
+        tier = payload.get("tier", "free")
+        
+        if not user_id or not email:
+            return None
+        
+        return CurrentUser(
+            user_id=user_id,
+            email=email,
+            tier=tier,
+            roles=[]  # AuthService tokens don't include roles
+        )
+    except Exception:
+        return None
 
 
 async def require_paid_tier(
@@ -132,8 +165,8 @@ async def check_standard_quota(
     Dependency to enforce standard research monthly quota.
     Raises HTTP 429 if the user has used their monthly allowance.
     """
-    from services.cost_service import CostService
-    from models.research import ResearchDepth
+    from ..services.cost_service import CostService
+    from ..models.research import ResearchDepth
 
     try:
         await CostService().check_quota(current_user.user_id, ResearchDepth.STANDARD)
@@ -153,8 +186,8 @@ async def check_deep_quota(
     Combines paid-tier check + quota enforcement.
     Raises HTTP 429 if the user has used their deep research allowance.
     """
-    from services.cost_service import CostService
-    from models.research import ResearchDepth
+    from ..services.cost_service import CostService
+    from ..models.research import ResearchDepth
 
     try:
         await CostService().check_quota(current_user.user_id, ResearchDepth.DEEP)

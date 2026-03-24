@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Consilience"
     DEBUG: bool = False  # SECURITY: Must be False in production; only True for testing
     BASE_URL: Optional[str] = None  # e.g., https://example.com for production
+    FRONTEND_URL: str = "http://localhost:3000"
     
     # Neon/Postgres connection string
     DATABASE_URL: str | None = None
@@ -68,28 +69,30 @@ class Settings(BaseSettings):
     @field_validator("GOOGLE_REDIRECT_URI", mode="before")
     @classmethod
     def validate_google_redirect_uri(cls, v: Optional[str], info) -> Optional[str]:
-        """Set GOOGLE_REDIRECT_URI from BASE_URL if not explicitly set."""
-        if v is not None:
-            return v
-        # If BASE_URL is set, derive redirect_uri from it (normalize trailing slashes)
-        base_url = info.data.get("BASE_URL")
-        if base_url:
-            return f"{base_url.rstrip('/')}/api/oauth/google/callback"
-        # Default for development
-        return "http://localhost:8000/api/oauth/google/callback"
+        """Set GOOGLE_REDIRECT_URI to frontend callback route.
+
+        OAuth flow in this project redirects to frontend callback pages,
+        then frontend exchanges the code at /api/auth/oauth/callback.
+        """
+        frontend_url = info.data.get("FRONTEND_URL") or "http://localhost:3000"
+
+        if v is None:
+            return f"{frontend_url.rstrip('/')}/auth/callback/google"
+
+        # Respect explicitly configured URI exactly.
+        return v.strip()
 
     @field_validator("GITHUB_REDIRECT_URI", mode="before")
     @classmethod
     def validate_github_redirect_uri(cls, v: Optional[str], info) -> Optional[str]:
-        """Set GITHUB_REDIRECT_URI from BASE_URL if not explicitly set."""
-        if v is not None:
-            return v
-        # If BASE_URL is set, derive redirect_uri from it (normalize trailing slashes)
-        base_url = info.data.get("BASE_URL")
-        if base_url:
-            return f"{base_url.rstrip('/')}/api/oauth/github/callback"
-        # Default for development
-        return "http://localhost:8000/api/oauth/github/callback"
+        """Set GITHUB_REDIRECT_URI to frontend callback route."""
+        frontend_url = info.data.get("FRONTEND_URL") or "http://localhost:3000"
+
+        if v is None:
+            return f"{frontend_url.rstrip('/')}/auth/callback/github"
+
+        # Respect explicitly configured URI exactly.
+        return v.strip()
 
     @field_validator("BACKEND_OAUTH_CALLBACK_URL", mode="before")
     @classmethod
