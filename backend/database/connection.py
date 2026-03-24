@@ -4,6 +4,7 @@ Async connections for FastAPI.
 """
 
 import os
+import re
 from typing import AsyncGenerator
 from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
@@ -59,23 +60,19 @@ SessionLocal = sessionmaker(bind=_engine, autoflush=False, autocommit=False)
 # Create async engine for FastAPI
 async_connect_args = {}
 if "postgresql" in DATABASE_URL:
-    # Ensure asyncpg scheme
+    # Replace postgresql:// with postgresql+asyncpg://
     ASYNC_DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
-
-    # Parse URL and remove only the sslmode (and channel_binding) query parameters, preserving others
-    url_obj = make_url(ASYNC_DATABASE_URL)
-    query_params = dict(url_obj.query)
-    cleaned_query = {
-        key: value
-        for key, value in query_params.items()
-        if key.lower() not in ("sslmode", "channel_binding")
-    }
-    url_obj = url_obj.set(query=cleaned_query)
-    ASYNC_DATABASE_URL = str(url_obj)
-
-    # Only require SSL in production
-    if REQUIRE_SSL:
-        async_connect_args = {"ssl": "require"}
+    
+    # Strip sslmode=require and channel_binding=require from query string using regex
+    # This preserves the password and all other parts of the URL correctly
+    ASYNC_DATABASE_URL = re.sub(r'[?&]sslmode=[^&]*', '', ASYNC_DATABASE_URL)
+    ASYNC_DATABASE_URL = re.sub(r'[?&]channel_binding=[^&]*', '', ASYNC_DATABASE_URL)
+    # Clean up multiple ? or leading &
+    ASYNC_DATABASE_URL = re.sub(r'\?&', '?', ASYNC_DATABASE_URL)
+    ASYNC_DATABASE_URL = re.sub(r'\?$', '', ASYNC_DATABASE_URL)
+    
+    # Neon ALWAYS requires SSL, regardless of environment
+    async_connect_args = {"ssl": "require"}
 elif "sqlite" in DATABASE_URL and "aiosqlite" not in DATABASE_URL:
     ASYNC_DATABASE_URL = DATABASE_URL.replace("sqlite://", "sqlite+aiosqlite://")
     async_connect_args = {}

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from ...models.user import UserCreate, UserLogin, UserResponse, TokenResponse
 from ...services.auth_service import AuthService
 
-router = APIRouter(prefix="/api/auth", tags=["auth"])
+router = APIRouter(tags=["auth"])
 
 
 @router.post("/register", response_model=UserResponse)
