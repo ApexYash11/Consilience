@@ -74,7 +74,7 @@ export default function LoginPage() {
 
       <div className="flex flex-col gap-3 mb-6">
         <Button 
-          onClick={() => startOAuthFlow('google')}
+          onClick={() => startOAuthFlow('google', nextPath)}
           variant="secondary" 
           className="w-full flex items-center justify-center gap-2.5 h-10 border border-[var(--border-default)]"
           aria-label="Sign in with Google"
@@ -83,7 +83,7 @@ export default function LoginPage() {
           <span className="whitespace-nowrap">Sign in with Google</span>
         </Button>
         <Button 
-          onClick={() => startOAuthFlow('github')}
+          onClick={() => startOAuthFlow('github', nextPath)}
           variant="secondary" 
           className="w-full flex items-center justify-center gap-2.5 h-10 border border-[var(--border-default)]"
           aria-label="Sign in with GitHub"

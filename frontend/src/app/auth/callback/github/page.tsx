@@ -53,9 +53,11 @@ export default function GitHubCallbackPage() {
           setError('Failed to authenticate with GitHub');
           setLoading(false);
         } else {
-          // Successfully authenticated - redirect to dashboard
+          // Successfully authenticated - redirect to stored path or dashboard
+          const nextPath = sessionStorage.getItem('oauth_next_github') || '/dashboard';
+          sessionStorage.removeItem('oauth_next_github');
           setLoading(false);
-          router.push('/dashboard');
+          router.push(nextPath);
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Unknown error occurred');

@@ -116,20 +116,100 @@ class OAuthService:
                 logger.error(f"Failed to get GitHub user info: {e}")
                 return None
 
+    async def get_github_verified_email(self, access_token: str) -> Optional[str]:
+        """Fetch user's primary verified email from GitHub's /user/emails endpoint.
+        
+        GitHub's /user endpoint may not return email if user keeps it private.
+        This endpoint returns all email addresses scoped to user:email.
+        
+        Args:
+            access_token: GitHub OAuth access token
+            
+        Returns:
+            Primary verified email address or None if none found
+        """
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                response = await client.get(
+                    "https://api.github.com/user/emails",
+                    headers={
+                        "Authorization": f"Bearer {access_token}",
+                        "Accept": "application/vnd.github.v3+json",
+                    },
+                )
+                response.raise_for_status()
+                emails = response.json()
+                
+                # Find primary AND verified email
+                for email_obj in emails:
+                    if email_obj.get("primary") and email_obj.get("verified"):
+                        return email_obj.get("email")
+                
+                # Fallback: any verified email
+                for email_obj in emails:
+                    if email_obj.get("verified"):
+                        return email_obj.get("email")
+                
+                logger.warning("No verified email found in GitHub user emails")
+                return None
+            except Exception as e:
+                logger.error(f"Failed to get GitHub verified email: {e}")
+                return None
+
     def get_or_create_oauth_user(
         self,
-        email: str,
+        email: Optional[str],
         full_name: str,
         provider: str,  # 'google' or 'github'
         provider_id: str,
     ) -> Optional[UserDB]:
-        """Get existing OAuth user or create new one."""
+        """Get existing OAuth user or create new one.
+        
+        Args:
+            email: User's email address
+            full_name: User's full name
+            provider: OAuth provider ('google' or 'github')
+            provider_id: OAuth provider's user ID (for future schema expansion)
+            
+        Returns:
+            UserDB instance or None on error
+        """
         try:
-            # Check if user exists by email
-            existing_user = self.db.query(UserDB).filter(UserDB.email == email).first()
+            # Check if user exists by email (if email provided)
+            existing_user = None
+            if email:
+                existing_user = self.db.query(UserDB).filter(UserDB.email == email).first()
 
             if existing_user:
-                logger.info(f"OAuth user {existing_user.id} already exists via {provider}")
+                # Verify user's auth method matches or is compatible with OAuth
+                # OAuth users have hashed_password like "!oauth:google" or "!oauth:github"
+                password_is_oauth = (
+                    existing_user.hashed_password is not None 
+                    and isinstance(existing_user.hashed_password, str)
+                    and existing_user.hashed_password.startswith("!oauth:")
+                )
+                
+                if password_is_oauth:
+                    # Extract original provider
+                    original_provider = existing_user.hashed_password.replace("!oauth:", "")
+                    
+                    if original_provider != provider:
+                        # Log the mismatch for auditing - user registered with different provider
+                        logger.warning(
+                            f"OAuth provider mismatch for user {existing_user.id}: "
+                            f"originally {original_provider}, attempting {provider}. "
+                            f"Provider ID: {provider_id}"
+                        )
+                        # For now, allow linking - in future require explicit account linking flow
+                        # TODO: Implement account linking flow when schema supports provider_id tracking
+                else:
+                    # User exists but was registered via password auth, not OAuth
+                    logger.info(f"User {existing_user.id} has existing password auth, allowing OAuth link")
+                    # TODO: Require explicit account linking confirmation
+                
+                # TODO: When schema supports provider_id persistence, verify and store provider_id
+                logger.info(f"OAuth user {existing_user.id} already exists via {provider} "
+                           f"(original: {existing_user.hashed_password})")
                 return existing_user
 
             # Create new OAuth user
@@ -147,12 +227,17 @@ class OAuthService:
                 neon_user_id=None,
                 created_at=datetime.utcnow(),
             )
+            
+            # TODO: When schema supports OAuthAccount model or provider_id field, persist:
+            # new_user.oauth_provider = provider
+            # new_user.oauth_provider_id = provider_id
 
             self.db.add(new_user)
             self.db.commit()
             self.db.refresh(new_user)
 
-            logger.info(f"Created new OAuth user {new_user.id} via {provider}")
+            logger.info(f"Created new OAuth user {new_user.id} via {provider} "
+                       f"(provider ID: {provider_id})")
             return new_user
 
         except Exception as e:

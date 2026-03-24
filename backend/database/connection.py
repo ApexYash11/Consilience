@@ -98,8 +98,9 @@ if "postgresql" in DATABASE_URL:
     # Clean up asyncpg-specific parameters while keeping psycopg2-compatible ones
     ASYNC_DATABASE_URL = _clean_postgres_url(ASYNC_DATABASE_URL)
     
-    # Neon ALWAYS requires SSL, regardless of environment
-    async_connect_args = {"ssl": "require"}
+    # Only require SSL in production; others use the URL's sslmode parameter
+    if REQUIRE_SSL:
+        async_connect_args = {"ssl": "require"}
 elif "sqlite" in DATABASE_URL and "aiosqlite" not in DATABASE_URL:
     ASYNC_DATABASE_URL = DATABASE_URL.replace("sqlite://", "sqlite+aiosqlite://")
     async_connect_args = {}

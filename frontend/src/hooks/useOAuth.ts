@@ -21,7 +21,7 @@ export function useOAuth() {
    * Get authorization URL for the given provider
    */
   const getAuthorizationUrl = useCallback(
-    async (provider: 'google' | 'github'): Promise<string | null> => {
+    async (provider: 'google' | 'github', nextPath?: string): Promise<string | null> => {
       try {
         // Generate a cryptographically secure random state token
         const state = generateRandomString(32);
@@ -29,6 +29,11 @@ export function useOAuth() {
         // Store state in sessionStorage for validation on callback
         const storageKey = `oauth_state_${provider}`;
         sessionStorage.setItem(storageKey, state);
+        
+        // Store nextPath if provided for post-auth redirect
+        if (nextPath) {
+          sessionStorage.setItem(`oauth_next_${provider}`, nextPath);
+        }
 
         // Request auth URL with state parameter
         const response = await fetch(
@@ -53,8 +58,8 @@ export function useOAuth() {
    * Start OAuth flow by redirecting to provider
    */
   const startOAuthFlow = useCallback(
-    async (provider: 'google' | 'github') => {
-      const authUrl = await getAuthorizationUrl(provider);
+    async (provider: 'google' | 'github', nextPath?: string) => {
+      const authUrl = await getAuthorizationUrl(provider, nextPath);
       if (authUrl) {
         window.location.href = authUrl;
       } else {
@@ -68,6 +73,7 @@ export function useOAuth() {
    * Handle OAuth callback from provider
    * Extract code from URL and exchange for token
    * Note: State validation is handled by callback pages, not here
+   * SECURITY: Tokens are stored in HttpOnly cookies set by backend, not localStorage
    */
   const handleOAuthCallback = useCallback(
     async (provider: 'google' | 'github', code: string): Promise<boolean> => {
@@ -76,6 +82,7 @@ export function useOAuth() {
         const response = await fetch(`${API_BASE_URL}/api/auth/oauth/callback`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',  // Include cookies for HttpOnly cookie storage
           body: JSON.stringify({ code, provider }),
         });
 
@@ -100,10 +107,10 @@ export function useOAuth() {
 
         const data: OAuthToken = await response.json();
 
-        // Store token (don't redirect - let caller handle that)
-        localStorage.setItem('access_token', data.access_token);
-        localStorage.setItem('token_type', data.token_type);
-
+        // SECURITY NOTE: Token is now available in HttpOnly cookie set by backend
+        // We do NOT store sensitive tokens in localStorage due to XSS vulnerability
+        // The backend should return success confirmation, not the token itself
+        
         return true;
       } catch (error) {
         console.error(`OAuth callback failed for ${provider}:`, error);

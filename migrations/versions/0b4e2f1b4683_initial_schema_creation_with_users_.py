@@ -8,7 +8,7 @@ Create Date: 2026-03-24 17:43:34.948532
 from typing import Sequence, Union
 import uuid
 
-from alembic import op
+from alembic import op, context
 import sqlalchemy as sa
 from sqlalchemy.types import TypeDecorator, CHAR
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
@@ -233,7 +233,7 @@ def upgrade() -> None:
     sa.Column('duration_seconds', sa.Numeric(precision=8, scale=3), nullable=True),
     sa.Column('is_resumable', sa.Boolean(), nullable=True),
     sa.Column('error_message', sa.String(length=500), nullable=True),
-    sa.Column('created_at', sa.TIMESTAMP(), server_default=sa.text('now()'), nullable=True),
+    sa.Column('created_at', sa.TIMESTAMP(), server_default=sa.func.now(), nullable=True),
     sa.ForeignKeyConstraint(['task_id'], ['research_tasks.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
@@ -250,7 +250,7 @@ def upgrade() -> None:
     sa.Column('input_preview', sa.String(length=500), nullable=True),
     sa.Column('output_preview', sa.String(length=500), nullable=True),
     sa.Column('duration_seconds', sa.Numeric(precision=8, scale=3), nullable=True),
-    sa.Column('created_at', sa.TIMESTAMP(), server_default=sa.text('now()'), nullable=True),
+    sa.Column('created_at', sa.TIMESTAMP(), server_default=sa.func.now(), nullable=True),
     sa.ForeignKeyConstraint(['task_id'], ['research_tasks.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
@@ -289,8 +289,9 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_audit_logs_action'), table_name='audit_logs')
     op.drop_table('audit_logs')
     
-    # Drop PostgreSQL enum types (PostgreSQL only)
-    if op.get_bind().dialect.name == 'postgresql':
+    # Drop PostgreSQL enum types (PostgreSQL only, online mode only)
+    # In offline mode, there's no DB connection to check dialect
+    if not context.is_offline_mode() and op.get_bind().dialect.name == 'postgresql':
         op.execute('DROP TYPE IF EXISTS subscriptiontier CASCADE')
         op.execute('DROP TYPE IF EXISTS subscriptionstatus CASCADE')
         op.execute('DROP TYPE IF EXISTS researchdepth CASCADE')

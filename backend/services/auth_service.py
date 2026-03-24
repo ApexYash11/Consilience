@@ -3,7 +3,7 @@
 import re
 import bcrypt
 import jwt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import select
@@ -37,13 +37,25 @@ class AuthService:
         self.db = db_session
         self.settings = settings
         
-        # Generate JWT secret from settings or fallback to default (for dev only)
-        self.jwt_secret = getattr(settings, 'JWT_SECRET', 'change-me-in-production')
-        if self.jwt_secret == 'change-me-in-production' and not settings.DEBUG:
-            raise RuntimeError(
-                "JWT_SECRET not configured! Set JWT_SECRET in environment variables. "
-                "In production, this must be a secure random string."
-            )
+        # Get JWT secret from settings with SecretStr handling
+        jwt_secret = settings.JWT_SECRET
+        if isinstance(jwt_secret, str):
+            jwt_secret_value = jwt_secret.strip()
+        else:
+            # SecretStr - extract and validate
+            jwt_secret_value = jwt_secret.get_secret_value().strip()
+        
+        # Treat empty or whitespace-only secrets as missing
+        if not jwt_secret_value:
+            if not settings.DEBUG:
+                raise RuntimeError(
+                    "JWT_SECRET not configured! Set JWT_SECRET in environment variables. "
+                    "In production, this must be a secure random string."
+                )
+            # Use development default only in DEBUG mode
+            self.jwt_secret = 'change-me-in-production'
+        else:
+            self.jwt_secret = jwt_secret_value
     
     # ===== Password Management =====
     
@@ -90,7 +102,7 @@ class AuthService:
         Returns:
             JWT token string
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         payload = {
             "sub": str(user_id),  # Subject (user ID)
             "email": email,
@@ -157,8 +169,8 @@ class AuthService:
             user_id=user_id,
             email=email,
             token=token,
-            expires_at=datetime.utcnow() + timedelta(hours=EmailService.VERIFICATION_EXPIRY_HOURS),
-            last_sent_at=datetime.utcnow()
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=EmailService.VERIFICATION_EXPIRY_HOURS),
+            last_sent_at=datetime.now(timezone.utc)
         )
         
         self.db.add(verification)
@@ -201,7 +213,7 @@ class AuthService:
             return False, "User not found"
         
         user.is_verified = True  # type: ignore
-        verification.verified_at = datetime.utcnow()  # type: ignore
+        verification.verified_at = datetime.now(timezone.utc)  # type: ignore
         self.db.commit()
         
         return True, "Email verified successfully"
@@ -240,8 +252,8 @@ class AuthService:
             # Generate a fresh token for resend instead of reusing the old one
             token = EmailService.generate_verification_token()
             verification.token = token  # type: ignore
-            verification.last_sent_at = datetime.utcnow()  # type: ignore
-            verification.expires_at = datetime.utcnow() + timedelta(hours=EmailService.VERIFICATION_EXPIRY_HOURS)  # type: ignore
+            verification.last_sent_at = datetime.now(timezone.utc)  # type: ignore
+            verification.expires_at = datetime.now(timezone.utc) + timedelta(hours=EmailService.VERIFICATION_EXPIRY_HOURS)  # type: ignore
             self.db.commit()
         
         # Send email
@@ -290,8 +302,8 @@ class AuthService:
             subscription_status=SubscriptionStatus.ACTIVE,
             is_active=True,
             is_verified=False,  # Email verification pending
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc)
         )
         
         self.db.add(new_user)
@@ -345,7 +357,7 @@ class AuthService:
             return None
         
         # Update last login timestamp
-        user.last_login = datetime.utcnow()  # type: ignore
+        user.last_login = datetime.now(timezone.utc)  # type: ignore
         self.db.commit()
         
         # Generate JWT token

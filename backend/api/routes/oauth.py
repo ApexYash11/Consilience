@@ -155,14 +155,27 @@ async def _handle_github_callback(code: str, service: OAuthService) -> TokenResp
             detail="Failed to get user info from GitHub",
         )
 
-    # Create or get user
+    # Get email: fetch from /user/emails endpoint if not in user_info
     login = user_info.get("login")
-    email = user_info.get("email") or (f"{login}@github.com" if login else None)
+    email = user_info.get("email")
+    
     if not email:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Email and login not provided by GitHub",
-        )
+        # Fetch verified email from GitHub's /user/emails endpoint
+        try:
+            email = await service.get_github_verified_email(access_token)
+        except Exception as e:
+            logger.warning(f"Failed to fetch GitHub verified email: {e}")
+            email = None
+    
+    # If no email found, log but allow creation with None email if login exists
+    if not email:
+        if not login:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Unable to retrieve email or login from GitHub account",
+            )
+        # log the situation
+        logger.warning(f"GitHub user {login} has no verified email, will create with null")
     
     name = user_info.get("name") or login or "GitHub User"
     provider_id = user_info.get("id")
@@ -205,6 +218,14 @@ def get_google_auth_url(state: str | None = None):
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Google OAuth not configured",
         )
+    
+    # Validate redirect URI is configured
+    if not _settings.GOOGLE_REDIRECT_URI:
+        logger.error("GOOGLE_REDIRECT_URI is not configured")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="OAuth redirect URI not configured on server",
+        )
 
     from urllib.parse import urlencode
     import secrets
@@ -232,6 +253,14 @@ def get_github_auth_url(state: str | None = None):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="GitHub OAuth not configured",
+        )
+    
+    # Validate redirect URI is configured
+    if not _settings.GITHUB_REDIRECT_URI:
+        logger.error("GITHUB_REDIRECT_URI is not configured")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="OAuth redirect URI not configured on server",
         )
 
     from urllib.parse import urlencode

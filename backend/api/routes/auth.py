@@ -102,6 +102,9 @@ def login(
                 detail="Incorrect email or password",
             )
         return user_token
+    except HTTPException:
+        # Re-raise HTTP exceptions to preserve status codes
+        raise
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -125,14 +128,21 @@ def verify_email(
         
     Raises:
         HTTPException 400: Invalid or expired token
+        HTTPException 500: Internal server error
     """
-    success, message = service.verify_email(request.token)
-    
-    status_code = 200 if success else 400
-    if not success:
-        raise HTTPException(status_code=status_code, detail=message)
-    
-    return VerificationResponse(success=success, message=message)
+    try:
+        success, message = service.verify_email(request.token)
+        
+        if not success:
+            raise HTTPException(status_code=400, detail=message)
+        
+        return VerificationResponse(success=success, message=message)
+    except HTTPException:
+        # Re-raise HTTP exceptions to preserve status codes
+        raise
+    except Exception as e:
+        logger.exception(f"Error verifying email: {type(e).__name__}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/resend-verification", response_model=VerificationResponse)

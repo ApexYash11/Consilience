@@ -57,17 +57,12 @@ class Settings(BaseSettings):
     @field_validator("JWT_SECRET", mode="after")
     @classmethod
     def validate_jwt_secret(cls, v: str | SecretStr) -> str | SecretStr:
-        """Validate JWT_SECRET is not the insecure default.
+        """Validate JWT_SECRET format and preserve SecretStr type.
         
-        Raises ValueError if JWT_SECRET is the insecure placeholder.
-        The runtime check in model_post_init will enforce production safety.
+        Note: Enforcement of non-default values for production is handled
+        in model_post_init which checks DEBUG flag.
         """
-        secret_value = v.get_secret_value() if isinstance(v, SecretStr) else v
-        if secret_value == "change-me-in-production":
-            raise ValueError(
-                "JWT_SECRET cannot use the insecure default. "
-                "Set JWT_SECRET environment variable to a secure random value."
-            )
+        # Simply return the value - SecretStr handling is preserved
         return v
 
     @field_validator("GOOGLE_REDIRECT_URI", mode="before")

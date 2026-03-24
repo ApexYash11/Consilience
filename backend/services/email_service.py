@@ -214,7 +214,7 @@ class EmailService:
         Returns:
             True if sent successfully
         """
-        reset_url = f"{cls.APP_URL}/reset-password?token={reset_token}"
+        reset_url = f"{cls.APP_URL}/reset-password?token={quote(reset_token)}"
         
         html_content = f"""
         <html>

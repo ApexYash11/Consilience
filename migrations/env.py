@@ -46,8 +46,8 @@ def get_sqlalchemy_url() -> str:
         parsed = urlparse(db_url)
         query_params = parse_qs(parsed.query, keep_blank_values=True)
         
-        # Remove asyncpg-specific parameters
-        params_to_remove = ['async_fallback', 'sslrootcert']
+        # Remove asyncpg-specific parameters (exclude psycopg2-compatible ones like sslrootcert)
+        params_to_remove = ['async_fallback']
         for param in params_to_remove:
             query_params.pop(param, None)
         
