@@ -7,6 +7,7 @@ import os
 import re
 from typing import AsyncGenerator
 from sqlalchemy import create_engine
+from sqlalchemy.pool import NullPool
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.engine import make_url
@@ -28,28 +29,17 @@ DATABASE_URL: str = os.getenv("DATABASE_URL") or "sqlite:///./consilience.db"
 if "postgresql" in DATABASE_URL:
     # Use standard PostgreSQL connection
     SYNC_DATABASE_URL = DATABASE_URL.replace("postgresql+asyncpg", "postgresql")
-    
-    # Parse and remove query parameters that psycopg2 doesn't support
-    url_obj = make_url(SYNC_DATABASE_URL)
-    query_params = dict(url_obj.query)
-    cleaned_query = {
-        key: value
-        for key, value in query_params.items()
-        if key.lower() not in ("sslmode", "channel_binding")
-    }
-    url_obj = url_obj.set(query=cleaned_query)
-    SYNC_DATABASE_URL = str(url_obj)
 else:
     SYNC_DATABASE_URL = DATABASE_URL
 
+# For psycopg2, sslmode in URL query string works fine
+# Don't use connect_args for postgresql - let the URL handle it
 _sync_connect_args = {}
-if "postgresql" in DATABASE_URL and REQUIRE_SSL:
-    _sync_connect_args = {"sslmode": "require"}
 
 _engine = create_engine(
     SYNC_DATABASE_URL,
     future=True,
-    pool_pre_ping=True,
+    poolclass=NullPool,  # Disable pooling - create fresh connection every time
     echo=False,
     connect_args=_sync_connect_args
 )
@@ -102,6 +92,25 @@ AsyncSessionLocal = async_sessionmaker(
 
 def get_session():
     """Synchronous session generator (deprecated, kept for backward compatibility)."""
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+def get_db_session():
+    """
+    Synchronous session generator for FastAPI dependency injection.
+    
+    Used for services that require sync database operations (like AuthService).
+    FastAPI will automatically call this and manage the session lifecycle.
+    
+    Example:
+        @app.post("/register")
+        def register(user_data: UserCreate, db: Session = Depends(get_db_session)):
+            ...
+    """
     db = SessionLocal()
     try:
         yield db
@@ -196,7 +205,7 @@ async def init_async_db():
 
 def init_db():
     """Initialize sync database (legacy, use async version instead)."""
-    from database.schema import Base
+    from .schema import Base
     
     Base.metadata.create_all(bind=_engine)
 

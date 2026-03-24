@@ -122,6 +122,32 @@ class UserDB(Base):
         return f"<User {self.email} ({self.subscription_tier})>"
 
 
+class EmailVerificationDB(Base):
+    """Email verification tokens for new user registration."""
+    __tablename__ = "email_verifications"
+    
+    id = Column(GUID, primary_key=True, default=uuid4)
+    user_id = Column(GUID, ForeignKey("users.id"), nullable=False, unique=True, index=True)
+    email = Column(String(255), nullable=False, index=True)
+    token = Column(String(64), nullable=False, unique=True, index=True)
+    
+    # Expiry
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    verified_at = Column(DateTime)
+    
+    # Tracking
+    attempts = Column(Integer, default=0)
+    last_sent_at = Column(DateTime)
+    
+    def is_expired(self) -> bool:
+        """Check if verification token has expired."""
+        return datetime.utcnow() > self.expires_at
+    
+    def __repr__(self):
+        return f"<EmailVerification {self.email}>"
+
+
 class UsageRecordDB(Base):
     """Monthly usage records for billing and analytics."""
     __tablename__ = "usage_records"

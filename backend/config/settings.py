@@ -14,6 +14,24 @@ class Settings(BaseSettings):
     AUTH_URL: str | None = None
     JWKS_URL: str | None = None
 
+    # JWT Token Generation (for username/password auth)
+    JWT_SECRET: str = "change-me-in-production"  # SECURITY: Override in production
+    JWT_ALGORITHM: str = "HS256"
+    JWT_EXPIRATION_HOURS: int = 24
+
+    # Google OAuth
+    GOOGLE_CLIENT_ID: str | None = None
+    GOOGLE_CLIENT_SECRET: str | None = None
+    GOOGLE_REDIRECT_URI: str = "http://localhost:8000/api/oauth/google/callback"
+
+    # GitHub OAuth
+    GITHUB_CLIENT_ID: str | None = None
+    GITHUB_CLIENT_SECRET: str | None = None
+    GITHUB_REDIRECT_URI: str = "http://localhost:8000/api/oauth/github/callback"
+
+    # Backend OAuth Redirect
+    BACKEND_OAUTH_CALLBACK_URL: str = "http://localhost:8000/api/auth/oauth/callback"
+
     # OpenRouter API
     OPENROUTER_API_KEY: str | None = None
 

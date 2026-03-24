@@ -7,3 +7,4 @@ __pycache__
 tmpclaude-*
 research_context/
 docs/
+tests/
