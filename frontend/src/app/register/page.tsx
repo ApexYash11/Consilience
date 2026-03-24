@@ -8,10 +8,12 @@ import { useAuth } from "@/context/AuthContext";
 import { AuthLayout } from "@/components/auth/AuthLayout";
 import { GoogleIcon, GitHubIcon } from "@/components/ui/icons";
 import { Eye, EyeOff } from "lucide-react";
+import { useOAuth } from "@/hooks/useOAuth";
 
 export default function RegisterPage() {
   const router = useRouter();
   const { register, error, isAuthenticated } = useAuth();
+  const { startOAuthFlow } = useOAuth();
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
@@ -55,21 +57,19 @@ export default function RegisterPage() {
 
       <div className="flex flex-col gap-3 mb-6">
         <Button 
-          disabled
-          title="Sign up with Google — Coming soon"
+          onClick={() => startOAuthFlow('google')}
           variant="secondary" 
           className="w-full flex items-center justify-center gap-2.5 h-10 border border-[var(--border-default)]"
-          aria-label="Sign up with Google — Coming soon"
+          aria-label="Sign up with Google"
         >
           <GoogleIcon className="w-5 h-5 flex-shrink-0" />
           <span className="whitespace-nowrap">Sign up with Google</span>
         </Button>
         <Button 
-          disabled
-          title="Sign up with GitHub — Coming soon"
+          onClick={() => startOAuthFlow('github')}
           variant="secondary" 
           className="w-full flex items-center justify-center gap-2.5 h-10 border border-[var(--border-default)]"
-          aria-label="Sign up with GitHub — Coming soon"
+          aria-label="Sign up with GitHub"
         >
           <GitHubIcon className="w-5 h-5 flex-shrink-0 text-[var(--text-primary)]" />
           <span className="whitespace-nowrap">Sign up with GitHub</span>

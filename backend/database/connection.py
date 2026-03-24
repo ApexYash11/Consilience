@@ -5,7 +5,9 @@ Async connections for FastAPI.
 
 import os
 from typing import AsyncGenerator
+from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 from sqlalchemy import create_engine
+from sqlalchemy.pool import NullPool
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.engine import make_url
@@ -24,31 +26,52 @@ REQUIRE_SSL = ENVIRONMENT == "production"
 DATABASE_URL: str = os.getenv("DATABASE_URL") or "sqlite:///./consilience.db"
 
 # Create sync engine (kept for backward compatibility if needed)
+_sync_connect_args = {}
 if "postgresql" in DATABASE_URL:
     # Use standard PostgreSQL connection
     SYNC_DATABASE_URL = DATABASE_URL.replace("postgresql+asyncpg", "postgresql")
     
-    # Parse and remove query parameters that psycopg2 doesn't support
-    url_obj = make_url(SYNC_DATABASE_URL)
-    query_params = dict(url_obj.query)
-    cleaned_query = {
-        key: value
-        for key, value in query_params.items()
-        if key.lower() not in ("sslmode", "channel_binding")
-    }
-    url_obj = url_obj.set(query=cleaned_query)
-    SYNC_DATABASE_URL = str(url_obj)
+    # Extract sslmode from URL query string and pass as connect_arg for psycopg2
+    parsed = urlparse(DATABASE_URL)
+    query_params = parse_qs(parsed.query, keep_blank_values=True)
+    
+    if 'sslmode' in query_params:
+        sslmode = query_params['sslmode'][0]
+        if sslmode == 'require':
+            _sync_connect_args['sslmode'] = 'require'
+        # Remove from URL since psycopg2 gets it from connect_args
+        query_params.pop('sslmode', None)
+        
+        # Rebuild URL without sslmode
+        new_query = urlencode(
+            {k: v[0] if len(v) == 1 else v for k, v in query_params.items()},
+            doseq=True
+        )
+        if new_query:
+            SYNC_DATABASE_URL = urlunparse((
+                parsed.scheme,
+                parsed.netloc,
+                parsed.path,
+                parsed.params,
+                new_query,
+                parsed.fragment
+            ))
+        else:
+            SYNC_DATABASE_URL = urlunparse((
+                parsed.scheme,
+                parsed.netloc,
+                parsed.path,
+                parsed.params,
+                '',
+                parsed.fragment
+            ))
 else:
     SYNC_DATABASE_URL = DATABASE_URL
-
-_sync_connect_args = {}
-if "postgresql" in DATABASE_URL and REQUIRE_SSL:
-    _sync_connect_args = {"sslmode": "require"}
 
 _engine = create_engine(
     SYNC_DATABASE_URL,
     future=True,
-    pool_pre_ping=True,
+    poolclass=NullPool,  # Disable pooling - create fresh connection every time
     echo=False,
     connect_args=_sync_connect_args
 )
@@ -56,25 +79,66 @@ _engine = create_engine(
 SessionLocal = sessionmaker(bind=_engine, autoflush=False, autocommit=False)
 
 
+def _clean_postgres_url(db_url: str) -> str:
+    """
+    Clean PostgreSQL URL by removing asyncpg-specific parameters.
+    
+    Removes asyncpg-incompatible query params using proper URL parsing.
+    These parameters are specific to asyncpg and should not be passed to the async driver.
+    
+    Args:
+        db_url: PostgreSQL URL (may have asyncpg-specific params)
+        
+    Returns:
+        Cleaned URL with asyncpg-specific params removed
+    """
+    # Parse the URL
+    parsed = urlparse(db_url)
+    
+    # Parse query parameters
+    query_params = parse_qs(parsed.query, keep_blank_values=True)
+    
+    # Remove asyncpg-incompatible parameters
+    params_to_remove = ['async_fallback', 'sslrootcert', 'sslmode']
+    for param in params_to_remove:
+        query_params.pop(param, None)
+    
+    # Rebuild query string (parse_qs returns lists for values, so flatten them)
+    new_query = urlencode(
+        {k: v[0] if len(v) == 1 else v for k, v in query_params.items()},
+        doseq=True
+    )
+    
+    # Reassemble URL
+    new_parsed = (
+        parsed.scheme,
+        parsed.netloc,
+        parsed.path,
+        parsed.params,
+        new_query,
+        parsed.fragment
+    )
+    return urlunparse(new_parsed)
+
+
 # Create async engine for FastAPI
 async_connect_args = {}
 if "postgresql" in DATABASE_URL:
-    # Ensure asyncpg scheme
+    # Replace postgresql:// with postgresql+asyncpg://
     ASYNC_DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
 
-    # Parse URL and remove only the sslmode (and channel_binding) query parameters, preserving others
-    url_obj = make_url(ASYNC_DATABASE_URL)
-    query_params = dict(url_obj.query)
-    cleaned_query = {
-        key: value
-        for key, value in query_params.items()
-        if key.lower() not in ("sslmode", "channel_binding")
-    }
-    url_obj = url_obj.set(query=cleaned_query)
-    ASYNC_DATABASE_URL = str(url_obj)
-
-    # Only require SSL in production
-    if REQUIRE_SSL:
+    # Map sslmode from URL query to asyncpg-compatible connect arg.
+    parsed = urlparse(DATABASE_URL)
+    query_params = parse_qs(parsed.query, keep_blank_values=True)
+    sslmode = (query_params.get("sslmode") or [None])[0]
+    if sslmode == "require":
+        async_connect_args = {"ssl": "require"}
+    
+    # Clean up asyncpg-specific parameters while keeping psycopg2-compatible ones
+    ASYNC_DATABASE_URL = _clean_postgres_url(ASYNC_DATABASE_URL)
+    
+    # Enforce SSL in production even if URL omitted sslmode.
+    if REQUIRE_SSL and "ssl" not in async_connect_args:
         async_connect_args = {"ssl": "require"}
 elif "sqlite" in DATABASE_URL and "aiosqlite" not in DATABASE_URL:
     ASYNC_DATABASE_URL = DATABASE_URL.replace("sqlite://", "sqlite+aiosqlite://")
@@ -105,6 +169,25 @@ AsyncSessionLocal = async_sessionmaker(
 
 def get_session():
     """Synchronous session generator (deprecated, kept for backward compatibility)."""
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+def get_db_session():
+    """
+    Synchronous session generator for FastAPI dependency injection.
+    
+    Used for services that require sync database operations (like AuthService).
+    FastAPI will automatically call this and manage the session lifecycle.
+    
+    Example:
+        @app.post("/register")
+        def register(user_data: UserCreate, db: Session = Depends(get_db_session)):
+            ...
+    """
     db = SessionLocal()
     try:
         yield db
@@ -199,7 +282,7 @@ async def init_async_db():
 
 def init_db():
     """Initialize sync database (legacy, use async version instead)."""
-    from database.schema import Base
+    from .schema import Base
     
     Base.metadata.create_all(bind=_engine)
 

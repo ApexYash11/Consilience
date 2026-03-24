@@ -4,6 +4,7 @@ Multi-agent research orchestration platform
 """
 
 from fastapi import FastAPI, Depends
+from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
@@ -139,7 +140,7 @@ async def startup_event():
 
     # Run cleanup of old research context directories
     try:
-        from services.cleanup_service import cleanup_old_research_context
+        from ..services.cleanup_service import cleanup_old_research_context
         deleted = await cleanup_old_research_context()
         if deleted > 0:
             logger.info(f"Startup cleanup: removed {deleted} old research context directories")
@@ -195,14 +196,53 @@ async def root():
 
 
 # Include routes
-from ..api.routes import research, auth, payments, webhooks
+from ..api.routes import research, auth, payments, webhooks, oauth
 from ..api.routes.users import router as users_router
 
 app.include_router(research.router, prefix="/api/research", tags=["research"])
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+app.include_router(oauth.router, prefix="/api/auth", tags=["oauth"])
 app.include_router(payments.router)  # prefix defined in router
 app.include_router(webhooks.router)  # prefix defined in router
 app.include_router(users_router)
+
+
+@app.get("/api/oauth/google/callback", include_in_schema=False)
+async def legacy_google_oauth_callback(code: str | None = None, state: str | None = None, error: str | None = None):
+    """Legacy Google OAuth callback bridge to frontend route."""
+    from urllib.parse import urlencode
+
+    params: dict[str, str] = {}
+    if code:
+        params["code"] = code
+    if state:
+        params["state"] = state
+    if error:
+        params["error"] = error
+
+    target = f"{settings.frontend_url.rstrip('/')}/auth/callback/google"
+    if params:
+        target = f"{target}?{urlencode(params)}"
+    return RedirectResponse(url=target, status_code=307)
+
+
+@app.get("/api/oauth/github/callback", include_in_schema=False)
+async def legacy_github_oauth_callback(code: str | None = None, state: str | None = None, error: str | None = None):
+    """Legacy GitHub OAuth callback bridge to frontend route."""
+    from urllib.parse import urlencode
+
+    params: dict[str, str] = {}
+    if code:
+        params["code"] = code
+    if state:
+        params["state"] = state
+    if error:
+        params["error"] = error
+
+    target = f"{settings.frontend_url.rstrip('/')}/auth/callback/github"
+    if params:
+        target = f"{target}?{urlencode(params)}"
+    return RedirectResponse(url=target, status_code=307)
 
 if __name__ == "__main__":
     import uvicorn

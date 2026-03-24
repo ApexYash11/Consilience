@@ -8,11 +8,13 @@ import { useAuth } from "@/context/AuthContext";
 import { AuthLayout } from "@/components/auth/AuthLayout";
 import { GoogleIcon, GitHubIcon } from "@/components/ui/icons";
 import { Eye, EyeOff } from "lucide-react";
+import { useOAuth } from "@/hooks/useOAuth";
 
 export default function LoginPage() {
   const router = useRouter();
   const [nextPath, setNextPath] = useState("/");
   const { login, error, isAuthenticated } = useAuth();
+  const { startOAuthFlow } = useOAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -72,21 +74,19 @@ export default function LoginPage() {
 
       <div className="flex flex-col gap-3 mb-6">
         <Button 
-          disabled
-          title="Sign in with Google — Coming soon"
+          onClick={() => startOAuthFlow('google', nextPath)}
           variant="secondary" 
           className="w-full flex items-center justify-center gap-2.5 h-10 border border-[var(--border-default)]"
-          aria-label="Sign in with Google — Coming soon"
+          aria-label="Sign in with Google"
         >
           <GoogleIcon className="w-5 h-5 flex-shrink-0" />
           <span className="whitespace-nowrap">Sign in with Google</span>
         </Button>
         <Button 
-          disabled
-          title="Sign in with GitHub — Coming soon"
+          onClick={() => startOAuthFlow('github', nextPath)}
           variant="secondary" 
           className="w-full flex items-center justify-center gap-2.5 h-10 border border-[var(--border-default)]"
-          aria-label="Sign in with GitHub — Coming soon"
+          aria-label="Sign in with GitHub"
         >
           <GitHubIcon className="w-5 h-5 flex-shrink-0 text-[var(--text-primary)]" />
           <span className="whitespace-nowrap">Sign in with GitHub</span>

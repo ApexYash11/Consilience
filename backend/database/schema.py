@@ -3,7 +3,7 @@ Database models and schema for Consilience platform.
 Uses SQLAlchemy ORM with support for SQLite (dev) and PostgreSQL (prod).
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional
 from uuid import uuid4
@@ -120,6 +120,32 @@ class UserDB(Base):
     
     def __repr__(self):
         return f"<User {self.email} ({self.subscription_tier})>"
+
+
+class EmailVerificationDB(Base):
+    """Email verification tokens for new user registration."""
+    __tablename__ = "email_verifications"
+    
+    id = Column(GUID, primary_key=True, default=uuid4)
+    user_id = Column(GUID, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    email = Column(String(255), nullable=False, index=True)
+    token = Column(String(64), nullable=False, unique=True, index=True)
+    
+    # Expiry
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    verified_at = Column(DateTime)
+    
+    # Tracking
+    attempts = Column(Integer, default=0)
+    last_sent_at = Column(DateTime)
+    
+    def is_expired(self) -> bool:
+        """Check if verification token has expired."""
+        return datetime.now(timezone.utc) > self.expires_at
+    
+    def __repr__(self):
+        return f"<EmailVerification {self.email}>"
 
 
 class UsageRecordDB(Base):
