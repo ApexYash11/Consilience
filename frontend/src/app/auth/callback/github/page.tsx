@@ -27,6 +27,19 @@ export default function GitHubCallbackPage() {
       try {
         const code = searchParams.get('code');
         const state = searchParams.get('state');
+        
+        // Check if we just reloaded after storing token
+        const redirectAfterReload = sessionStorage.getItem('oauth_redirect_after_reload_github');
+        const token = window.localStorage.getItem('consilience_access_token');
+        
+        if (token && redirectAfterReload) {
+          // We have a token and a stored redirect path from before reload
+          console.log('[GitHub Callback] Post-reload redirect to', redirectAfterReload);
+          sessionStorage.removeItem('oauth_redirect_after_reload_github');
+          router.push(redirectAfterReload);
+          setLoading(false);
+          return;
+        }
 
         if (!code) {
           setError('No authorization code received from GitHub');
@@ -53,11 +66,16 @@ export default function GitHubCallbackPage() {
           setError('Failed to authenticate with GitHub');
           setLoading(false);
         } else {
-          // Successfully authenticated - redirect to stored path or dashboard
-          const nextPath = sessionStorage.getItem('oauth_next_github') || '/dashboard';
+          // Successfully authenticated - token is now in localStorage
+          // Store the next path, then reload to reinitialize AuthContext
+          const nextPath = sessionStorage.getItem('oauth_next_github') || '/';
           sessionStorage.removeItem('oauth_next_github');
+          sessionStorage.setItem('oauth_redirect_after_reload_github', nextPath);
           setLoading(false);
-          router.push(nextPath);
+          
+          // Reload page to reinitialize AuthContext with fresh token from localStorage
+          console.log('[GitHub Callback] Token stored, reloading to reinitialize auth');
+          window.location.reload();
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Unknown error occurred');

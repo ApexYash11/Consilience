@@ -27,6 +27,19 @@ export default function GoogleCallbackPage() {
       try {
         const code = searchParams.get('code');
         const state = searchParams.get('state');
+        
+        // Check if we just reloaded after storing token
+        const redirectAfterReload = sessionStorage.getItem('oauth_redirect_after_reload_google');
+        const token = window.localStorage.getItem('consilience_access_token');
+        
+        if (token && redirectAfterReload) {
+          // We have a token and a stored redirect path from before reload
+          console.log('[Google Callback] Post-reload redirect to', redirectAfterReload);
+          sessionStorage.removeItem('oauth_redirect_after_reload_google');
+          router.push(redirectAfterReload);
+          setLoading(false);
+          return;
+        }
 
         if (!code) {
           setError('No authorization code received from Google');
@@ -53,11 +66,16 @@ export default function GoogleCallbackPage() {
           setError('Failed to authenticate with Google');
           setLoading(false);
         } else {
-          // Successfully authenticated - redirect to stored path or dashboard
-          const nextPath = sessionStorage.getItem('oauth_next_google') || '/dashboard';
+          // Successfully authenticated - token is now in localStorage
+          // Store the next path, then reload to reinitialize AuthContext
+          const nextPath = sessionStorage.getItem('oauth_next_google') || '/';
           sessionStorage.removeItem('oauth_next_google');
+          sessionStorage.setItem('oauth_redirect_after_reload_google', nextPath);
           setLoading(false);
-          router.push(nextPath);
+          
+          // Reload page to reinitialize AuthContext with fresh token from localStorage
+          console.log('[Google Callback] Token stored, reloading to reinitialize auth');
+          window.location.reload();
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Unknown error occurred');

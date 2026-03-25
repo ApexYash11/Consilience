@@ -73,7 +73,6 @@ export function useOAuth() {
    * Handle OAuth callback from provider
    * Extract code from URL and exchange for token
    * Note: State validation is handled by callback pages, not here
-   * SECURITY: Tokens are stored in HttpOnly cookies set by backend, not localStorage
    */
   const handleOAuthCallback = useCallback(
     async (provider: 'google' | 'github', code: string): Promise<boolean> => {
@@ -82,7 +81,6 @@ export function useOAuth() {
         const response = await fetch(`${API_BASE_URL}/api/auth/oauth/callback`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',  // Include cookies for HttpOnly cookie storage
           body: JSON.stringify({ code, provider }),
         });
 
@@ -107,13 +105,17 @@ export function useOAuth() {
 
         const data: OAuthToken = await response.json();
 
-        // SECURITY NOTE: Token is now available in HttpOnly cookie set by backend
-        // We do NOT store sensitive tokens in localStorage due to XSS vulnerability
-        // The backend should return success confirmation, not the token itself
-        
-        return true;
+        // Store token in localStorage (same as password login)
+        // This allows the auth context to pick it up immediately
+        if (data.access_token) {
+          window.localStorage.setItem('consilience_access_token', data.access_token);
+          console.log(`[OAuth] Token stored for ${provider} OAuth`);
+          return true;
+        } else {
+          throw new Error('No access token in response');
+        }
       } catch (error) {
-        console.error(`OAuth callback failed for ${provider}:`, error);
+        console.error(`[OAuth] Callback failed for ${provider}:`, error);
         return false;
       }
     },

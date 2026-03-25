@@ -38,8 +38,10 @@ export default function LoginPage() {
     }
   }, []);
 
+  // Redirect to destination when authentication succeeds
   useEffect(() => {
     if (isAuthenticated) {
+      console.log(`[Auth] Login successful, redirecting to ${nextPath}`);
       router.replace(nextPath);
     }
   }, [isAuthenticated, nextPath, router]);
@@ -50,9 +52,10 @@ export default function LoginPage() {
 
     try {
       await login(email, password);
-      router.replace(nextPath);
-    } catch {
-      // Login error handled by useAuth context
+      // Don't redirect here - let useEffect handle it when isAuthenticated changes
+    } catch (err) {
+      // Login error is caught and stored in auth context
+      console.error("[Auth] Login failed:", err);
     } finally {
       setIsSubmitting(false);
     }
