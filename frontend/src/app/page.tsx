@@ -1,13 +1,20 @@
 "use client";
 
 import { useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { Shell } from "@/components/layout";
 import { Button, Card, Input } from "@/components/ui";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { useAuth } from "@/context/AuthContext";
 
 export default function Home() {
+  const router = useRouter();
   const { usage, logout, refreshUsage, error } = useAuth();
+
+  const handleLogout = () => {
+    logout();
+    router.push("/login");
+  };
   const usageSummary = useMemo(() => {
     if (!usage) {
       return [];
@@ -42,7 +49,7 @@ export default function Home() {
               <Button type="button" variant="upgrade">
                 Upgrade Plan
               </Button>
-              <Button type="button" variant="ghost" onClick={logout}>
+              <Button type="button" variant="ghost" onClick={handleLogout}>
                 Sign Out
               </Button>
             </div>
