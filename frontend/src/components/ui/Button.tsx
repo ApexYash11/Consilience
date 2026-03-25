@@ -4,13 +4,17 @@ import { Loader2 } from "lucide-react";
 import type { ButtonHTMLAttributes } from "react";
 import { cn } from "@/lib/cn";
 
-type ButtonVariant = "primary" | "secondary" | "danger" | "ghost" | "upgrade";
+type ButtonVariant = "primary" | "secondary" | "danger" | "ghost" | "upgrade" | "default" | "outline";
 type ButtonSize = "sm" | "md" | "lg";
 
 const variantClasses: Record<ButtonVariant, string> = {
   primary:
     "bg-[var(--blue-400)] text-white border border-[#2563eb] hover:bg-[#3b82f6] hover:shadow-md focus-visible:ring-[var(--blue-400)] transition-all",
+  default:
+    "bg-[var(--blue-400)] text-white border border-[#2563eb] hover:bg-[#3b82f6] hover:shadow-md focus-visible:ring-[var(--blue-400)] transition-all",
   secondary:
+    "bg-transparent text-[var(--text-primary)] border border-[var(--border-strong)] hover:bg-[var(--bg-hover)] hover:border-[var(--border-strong)] focus-visible:ring-[var(--blue-400)] transition-all",
+  outline:
     "bg-transparent text-[var(--text-primary)] border border-[var(--border-strong)] hover:bg-[var(--bg-hover)] hover:border-[var(--border-strong)] focus-visible:ring-[var(--blue-400)] transition-all",
   danger:
     "bg-transparent text-[var(--text-danger)] border border-[var(--border-danger)] hover:bg-[var(--bg-danger)] hover:border-[var(--text-danger)] focus-visible:ring-[var(--text-danger)] transition-all",
