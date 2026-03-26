@@ -81,19 +81,19 @@ jobs:
 
       - name: Run health check tests
         run: |
-          pytest tests/test_auth_complete.py::test_health_check -v
+          pytest backend/tests/test_auth_complete.py::test_health_check -v
 
       - name: Test API root endpoint
         run: |
-          pytest tests/test_auth_complete.py::test_root_endpoint -v
+          pytest backend/tests/test_auth_complete.py::test_root_endpoint -v
 
       - name: Run database connectivity tests
         run: |
-          pytest tests/test_database.py -v
+          pytest backend/tests/test_database.py -v
 
       - name: Run authentication tests
         run: |
-          pytest tests/test_auth_complete.py -v
+          pytest backend/tests/test_auth_complete.py -v
 
       - name: Start API server
         run: |
@@ -174,7 +174,7 @@ jobs:
 
       - name: Run test suite
         run: |
-          pytest tests/ -v --tb=short --cov=. --cov-report=xml
+          pytest backend/tests/ -v --tb=short --cov=. --cov-report=xml
 
       - name: Upload coverage reports
         uses: codecov/codecov-action@v3

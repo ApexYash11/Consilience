@@ -189,7 +189,7 @@ class OAuthService:
                     and existing_user.hashed_password.startswith("!oauth:")
                 )
                 
-                if password_is_oauth:
+                if password_is_oauth:  # type: ignore[truthy-bool]
                     # Extract original provider
                     original_provider = existing_user.hashed_password.replace("!oauth:", "")
                     

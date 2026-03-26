@@ -88,14 +88,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null);
     const result = await loginRequest({ email, password });
     
-    try {
-      await loadUsage(result.access_token);
-      window.localStorage.setItem(STORAGE_KEY, result.access_token);
-      setToken(result.access_token);
-      setStatus("authenticated");
-    } catch {
-      throw new Error("Failed to load usage data after login");
-    }
+    // CRITICAL: Store token IMMEDIATELY to unblock auth state
+    // This allows redirect to happen even if usage loading fails
+    window.localStorage.setItem(STORAGE_KEY, result.access_token);
+    setToken(result.access_token);
+    setStatus("authenticated");
+    
+    // Load usage in the background without blocking
+    // If this fails, user is still authenticated with basic token
+    loadUsage(result.access_token).catch((err) => {
+      console.error("[Auth] Failed to load usage data:", err);
+      // Still authenticated, just without usage data
+    });
   }, [loadUsage]);
 
   const register = useCallback(

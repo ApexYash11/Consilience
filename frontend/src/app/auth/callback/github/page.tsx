@@ -4,11 +4,11 @@
  */
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useOAuth } from '@/hooks/useOAuth';
 
-export default function GitHubCallbackPage() {
+function GitHubCallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { handleOAuthCallback } = useOAuth();
@@ -27,6 +27,19 @@ export default function GitHubCallbackPage() {
       try {
         const code = searchParams.get('code');
         const state = searchParams.get('state');
+        
+        // Check if we just reloaded after storing token
+        const redirectAfterReload = sessionStorage.getItem('oauth_redirect_after_reload_github');
+        const token = window.localStorage.getItem('consilience_access_token');
+        
+        if (token && redirectAfterReload) {
+          // We have a token and a stored redirect path from before reload
+          console.log('[GitHub Callback] Post-reload redirect to', redirectAfterReload);
+          sessionStorage.removeItem('oauth_redirect_after_reload_github');
+          router.push(redirectAfterReload);
+          setLoading(false);
+          return;
+        }
 
         if (!code) {
           setError('No authorization code received from GitHub');
@@ -53,11 +66,16 @@ export default function GitHubCallbackPage() {
           setError('Failed to authenticate with GitHub');
           setLoading(false);
         } else {
-          // Successfully authenticated - redirect to stored path or dashboard
-          const nextPath = sessionStorage.getItem('oauth_next_github') || '/dashboard';
+          // Successfully authenticated - token is now in localStorage
+          // Store the next path, then reload to reinitialize AuthContext
+          const nextPath = sessionStorage.getItem('oauth_next_github') || '/';
           sessionStorage.removeItem('oauth_next_github');
+          sessionStorage.setItem('oauth_redirect_after_reload_github', nextPath);
           setLoading(false);
-          router.push(nextPath);
+          
+          // Reload page to reinitialize AuthContext with fresh token from localStorage
+          console.log('[GitHub Callback] Token stored, reloading to reinitialize auth');
+          window.location.reload();
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Unknown error occurred');
@@ -84,7 +102,7 @@ export default function GitHubCallbackPage() {
           <p className="text-red-600 mb-4">{error}</p>
           <button
             onClick={() => router.push('/login')}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            className="px-4 py-2 border border-[var(--border-strong)] text-[var(--text-primary)] rounded hover:bg-[var(--bg-hover)]"
           >
             Back to Login
           </button>
@@ -94,4 +112,19 @@ export default function GitHubCallbackPage() {
   }
 
   return null;
+}
+
+export default function GitHubCallbackPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--text-primary)] mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    }>
+      <GitHubCallbackContent />
+    </Suspense>
+  );
 }

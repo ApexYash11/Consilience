@@ -38,8 +38,10 @@ export default function LoginPage() {
     }
   }, []);
 
+  // Redirect to destination when authentication succeeds
   useEffect(() => {
     if (isAuthenticated) {
+      console.log(`[Auth] Login successful, redirecting to ${nextPath}`);
       router.replace(nextPath);
     }
   }, [isAuthenticated, nextPath, router]);
@@ -50,9 +52,10 @@ export default function LoginPage() {
 
     try {
       await login(email, password);
-      router.replace(nextPath);
-    } catch {
-      // Login error handled by useAuth context
+      // Don't redirect here - let useEffect handle it when isAuthenticated changes
+    } catch (err) {
+      // Login error is caught and stored in auth context
+      console.error("[Auth] Login failed:", err);
     } finally {
       setIsSubmitting(false);
     }
@@ -123,7 +126,7 @@ export default function LoginPage() {
               <button 
                 type="button" 
                 onClick={() => setShowPassword(!showPassword)}
-                className="focus-visible:ring-2 focus-visible:ring-[var(--blue-400)] focus-visible:ring-offset-0 focus-visible:rounded-sm hover:text-[var(--text-primary)] transition-colors"
+                className="focus-visible:ring-2 focus-visible:ring-[var(--border-strong)] focus-visible:ring-offset-0 focus-visible:rounded-sm hover:text-[var(--text-primary)] transition-colors"
                 aria-label={showPassword ? "Hide password" : "Show password"}
               >
                 {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
