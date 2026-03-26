@@ -34,7 +34,7 @@ export function Input({ label, helperText, error, rightElement, className, id, .
             "h-11 md:h-9 w-full rounded-[var(--r-md)] border border-[var(--border-default)]",
             "bg-[var(--bg-surface)] px-3 text-base md:text-[13px] text-[var(--text-primary)]",
             "placeholder:text-[var(--text-muted)]",
-            "focus:outline-none focus:ring-2 focus:ring-offset-0 focus:ring-[var(--blue-400)] focus:border-[var(--blue-400)] transition-all",
+            "focus:outline-none focus:ring-2 focus:ring-offset-0 focus:ring-[var(--border-strong)] focus:border-[var(--border-strong)] transition-all",
             error
               ? "border-[1.5px] border-[var(--text-danger)] focus:ring-[var(--text-danger)] focus:ring-offset-0"
               : "hover:border-[var(--border-strong)] hover:bg-[var(--bg-surface-hover)]",

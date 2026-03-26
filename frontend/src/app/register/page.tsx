@@ -122,7 +122,7 @@ export default function RegisterPage() {
             <button 
               type="button" 
               onClick={() => setShowPassword(!showPassword)}
-              className="focus-visible:ring-2 focus-visible:ring-[var(--blue-400)] focus-visible:ring-offset-0 focus-visible:rounded-sm hover:text-[var(--text-primary)] transition-colors"
+              className="focus-visible:ring-2 focus-visible:ring-[var(--border-strong)] focus-visible:ring-offset-0 focus-visible:rounded-sm hover:text-[var(--text-primary)] transition-colors"
               aria-label={showPassword ? "Hide password" : "Show password"}
             >
               {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}

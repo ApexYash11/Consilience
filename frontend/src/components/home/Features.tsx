@@ -2,6 +2,11 @@
 
 import { Card } from '@/components/ui'
 import { Brain, Zap, Shield, TrendingUp } from 'lucide-react'
+import {
+  LandingSection,
+  LandingSectionHeadline,
+  LandingSectionSubtext,
+} from '@/components/landing'
 
 const features = [
   {
@@ -28,19 +33,23 @@ const features = [
 
 export function Features() {
   return (
-    <section className="relative py-20 md:py-32 px-4 sm:px-6 lg:px-8">
+    <LandingSection className="relative py-20 md:py-32 px-4 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl">
         {/* Section Header */}
         <div className="text-center space-y-4 mb-16">
-          <h2
-            className="text-3xl md:text-4xl lg:text-5xl font-light"
-            style={{ fontFamily: "var(--font-display)" }}
-          >
-            Powerful Features
-          </h2>
-          <p className="mx-auto max-w-2xl text-lg text-muted-foreground">
-            Everything you need for deep research and analysis
-          </p>
+          <LandingSectionHeadline>
+            <h2
+              className="text-3xl md:text-4xl lg:text-5xl font-light"
+              style={{ fontFamily: "var(--font-display)" }}
+            >
+              Powerful Features
+            </h2>
+          </LandingSectionHeadline>
+          <LandingSectionSubtext>
+            <p className="mx-auto max-w-2xl text-lg text-muted-foreground">
+              Everything you need for deep research and analysis
+            </p>
+          </LandingSectionSubtext>
         </div>
 
         {/* Features Grid */}
@@ -48,27 +57,29 @@ export function Features() {
           {features.map((feature) => {
             const Icon = feature.icon
             return (
-              <Card key={feature.title} className="p-6 hover:border-primary/50 transition-colors">
-                <div className="flex gap-4">
-                  <div className="flex-shrink-0">
-                    <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center">
-                      <Icon className="h-6 w-6 text-primary" />
+              <LandingSectionSubtext key={feature.title}>
+                <Card className="p-6 hover:border-primary/50 transition-colors">
+                  <div className="flex gap-4">
+                    <div className="flex-shrink-0">
+                      <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center">
+                        <Icon className="h-6 w-6 text-primary" />
+                      </div>
+                    </div>
+                    <div className="flex-1 space-y-2">
+                      <h3 className="font-semibold text-lg">
+                        {feature.title}
+                      </h3>
+                      <p className="text-muted-foreground">
+                        {feature.description}
+                      </p>
                     </div>
                   </div>
-                  <div className="flex-1 space-y-2">
-                    <h3 className="font-semibold text-lg">
-                      {feature.title}
-                    </h3>
-                    <p className="text-muted-foreground">
-                      {feature.description}
-                    </p>
-                  </div>
-                </div>
-              </Card>
+                </Card>
+              </LandingSectionSubtext>
             )
           })}
         </div>
       </div>
-    </section>
+    </LandingSection>
   )
 }

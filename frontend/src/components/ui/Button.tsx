@@ -9,19 +9,19 @@ type ButtonSize = "sm" | "md" | "lg";
 
 const variantClasses: Record<ButtonVariant, string> = {
   primary:
-    "bg-[var(--blue-400)] text-white border border-[#2563eb] hover:bg-[#3b82f6] hover:shadow-md focus-visible:ring-[var(--blue-400)] transition-all",
+    "bg-[var(--text-primary)] text-[var(--bg-base)] border border-transparent hover:opacity-90 hover:shadow-md focus-visible:ring-[var(--border-strong)] transition-all",
   default:
-    "bg-[var(--blue-400)] text-white border border-[#2563eb] hover:bg-[#3b82f6] hover:shadow-md focus-visible:ring-[var(--blue-400)] transition-all",
+    "bg-[var(--text-primary)] text-[var(--bg-base)] border border-transparent hover:opacity-90 hover:shadow-md focus-visible:ring-[var(--border-strong)] transition-all",
   secondary:
-    "bg-transparent text-[var(--text-primary)] border border-[var(--border-strong)] hover:bg-[var(--bg-hover)] hover:border-[var(--border-strong)] focus-visible:ring-[var(--blue-400)] transition-all",
+    "bg-transparent text-[var(--text-primary)] border border-[var(--border-strong)] hover:bg-[var(--bg-hover)] focus-visible:ring-[var(--border-strong)] transition-all",
   outline:
-    "bg-transparent text-[var(--text-primary)] border border-[var(--border-strong)] hover:bg-[var(--bg-hover)] hover:border-[var(--border-strong)] focus-visible:ring-[var(--blue-400)] transition-all",
+    "bg-transparent text-[var(--text-primary)] border border-[var(--border-strong)] hover:bg-[var(--bg-hover)] focus-visible:ring-[var(--border-strong)] transition-all",
   danger:
-    "bg-transparent text-[var(--text-danger)] border border-[var(--border-danger)] hover:bg-[var(--bg-danger)] hover:border-[var(--text-danger)] focus-visible:ring-[var(--text-danger)] transition-all",
+    "bg-transparent text-[var(--text-danger)] border border-[var(--border-danger)] hover:bg-[var(--bg-danger)] focus-visible:ring-[var(--text-danger)] transition-all",
   ghost:
-    "bg-transparent text-[var(--text-secondary)] border border-transparent hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] focus-visible:ring-[var(--blue-400)] transition-all",
+    "bg-transparent text-[var(--text-secondary)] border border-transparent hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] focus-visible:ring-[var(--border-strong)] transition-all",
   upgrade:
-    "bg-[#7c3aed] text-white border border-[#6d28d9] hover:bg-[#a855f7] hover:shadow-md focus-visible:ring-[#7c3aed] transition-all",
+    "bg-[var(--text-primary)] text-[var(--bg-base)] border border-transparent hover:opacity-90 hover:shadow-md focus-visible:ring-[var(--border-strong)] transition-all",
 };
 
 const sizeClasses: Record<ButtonSize, string> = {

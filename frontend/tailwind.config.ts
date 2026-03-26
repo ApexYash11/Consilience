@@ -49,6 +49,18 @@ const config: Config = {
         md: 'calc(var(--radius) - 2px)',
         sm: 'calc(var(--radius) - 4px)',
       },
+      animation: {
+        'landing-enter': 'landing-fade-slide-up 400ms cubic-bezier(0.16, 1, 0.3, 1) forwards',
+        'landing-headline': 'landing-fade-slide-up 400ms cubic-bezier(0.16, 1, 0.3, 1) 0ms forwards',
+        'landing-subtext': 'landing-fade-slide-up 400ms cubic-bezier(0.16, 1, 0.3, 1) 100ms forwards',
+        'landing-cta': 'landing-fade-slide-up 400ms cubic-bezier(0.16, 1, 0.3, 1) 200ms forwards',
+      },
+      keyframes: {
+        'landing-fade-slide-up': {
+          'from': { opacity: '0', transform: 'translateY(40px)' },
+          'to': { opacity: '1', transform: 'translateY(0)' },
+        },
+      },
     },
   },
   plugins: [],
