@@ -109,9 +109,14 @@ export function Pricing() {
               visible: { opacity: 1, y: 0, transition: { duration: 0.5, delay: 0.12 } }
             }}
             className="inline-flex items-center p-1 rounded-full border border-border bg-background shadow-sm"
+            role="radiogroup"
+            aria-label="Billing frequency"
           >
             <button
               onClick={() => setIsYearly(false)}
+              role="radio"
+              aria-checked={!isYearly}
+              aria-label="Monthly billing"
               className={`relative px-6 py-2 rounded-full text-sm font-medium transition-colors ${
                 !isYearly ? 'text-primary-foreground' : 'text-muted-foreground hover:text-primary'
               }`}
@@ -127,6 +132,9 @@ export function Pricing() {
             </button>
             <button
               onClick={() => setIsYearly(true)}
+              role="radio"
+              aria-checked={isYearly}
+              aria-label="Yearly billing, 15% off"
               className={`relative px-6 py-2 rounded-full text-sm font-medium transition-colors ${
                 isYearly ? 'text-primary-foreground' : 'text-muted-foreground hover:text-primary'
               }`}
