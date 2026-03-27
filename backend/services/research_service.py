@@ -106,6 +106,12 @@ class ResearchService:
         """
         from sqlalchemy import select, func, desc
 
+        # Validate pagination parameters
+        if page < 1:
+            raise ValueError("page must be >= 1")
+        if page_size < 1:
+            raise ValueError("page_size must be >= 1")
+
         # Get total count
         count_result = await session.execute(
             select(func.count(ResearchTaskDB.id)).where(

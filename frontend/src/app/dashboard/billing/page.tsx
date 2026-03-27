@@ -6,6 +6,21 @@ import { ProtectedRoute } from "@/components/auth/ProtectedRoute"
 import { Check } from "lucide-react"
 
 export default function BillingPage() {
+  const handlePlanCta = (planName: string, ctaLabel: string) => {
+    if (ctaLabel === "Current Plan") {
+      return // Already on this plan
+    }
+    if (ctaLabel === "Contact Sales") {
+      window.location.href = "mailto:sales@consilience.ai"
+      return
+    }
+    if (ctaLabel === "Upgrade Now") {
+      // Navigate to upgrade flow or open payment modal
+      console.log(`Upgrading to ${planName}`)
+      // TODO: Implement upgrade flow
+    }
+  }
+
   const plans = [
     {
       name: "Free",
@@ -18,7 +33,7 @@ export default function BillingPage() {
         "Basic features",
       ],
       cta: "Current Plan",
-      ctaVariant: "secondary",
+      ctaVariant: "secondary" as const,
     },
     {
       name: "Pro",
@@ -32,7 +47,7 @@ export default function BillingPage() {
         "Export results",
       ],
       cta: "Upgrade Now",
-      ctaVariant: "default",
+      ctaVariant: "default" as const,
       highlighted: true,
     },
     {
@@ -47,7 +62,7 @@ export default function BillingPage() {
         "SLA guarantees",
       ],
       cta: "Contact Sales",
-      ctaVariant: "secondary",
+      ctaVariant: "secondary" as const,
     },
   ]
 
@@ -97,8 +112,9 @@ export default function BillingPage() {
                 </ul>
 
                 <Button
-                  variant={plan.ctaVariant as any}
+                  variant={plan.ctaVariant}
                   className="w-full"
+                  onClick={() => handlePlanCta(plan.name, plan.cta)}
                 >
                   {plan.cta}
                 </Button>

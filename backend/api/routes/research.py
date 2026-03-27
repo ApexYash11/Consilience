@@ -299,12 +299,16 @@ async def list_research_tasks(
     }
     """
     try:
+        # Normalize pagination parameters
+        normalized_page = max(1, page)
+        normalized_page_size = max(1, min(page_size, 100))  # Ensure page_size >= 1 and cap at 100
+        
         # Fetch paginated research tasks
         tasks, total_count = await ResearchService.get_user_research_tasks(
             session=db,
             user_id=UUID(user.user_id),  # type: ignore
-            page=max(1, page),  # Ensure page >= 1
-            page_size=min(page_size, 100),  # Cap page_size at 100
+            page=normalized_page,
+            page_size=normalized_page_size,
         )
 
         # Convert to list items
@@ -321,8 +325,8 @@ async def list_research_tasks(
             
             item = ResearchTaskListItem(
                 task_id=str(task.id),
-                title=task.title,
-                description=task.description,
+                title=task.title or "",
+                description=task.description or "",
                 depth=str(task.research_depth),
                 status=str(task.status),
                 created_at=task.created_at,
@@ -333,14 +337,14 @@ async def list_research_tasks(
             )
             task_items.append(item)
 
-        # Calculate total pages
-        total_pages = (total_count + page_size - 1) // page_size if page_size > 0 else 0
+        # Calculate total pages using normalized page_size
+        total_pages = (total_count + normalized_page_size - 1) // normalized_page_size
 
         return ResearchListResponse(
             tasks=task_items,
             total_count=total_count,
-            page=page,
-            page_size=page_size,
+            page=normalized_page,
+            page_size=normalized_page_size,
             total_pages=total_pages,
         )
 

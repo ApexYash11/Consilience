@@ -35,14 +35,16 @@ export default function MorePage() {
 
           <div className="space-y-2">
             {menuItems.map(({ label, href, icon: Icon }) => (
-              <Link key={href} href={href}>
-                <button className="w-full p-4 flex items-center justify-between rounded-lg hover:bg-[var(--bg-hover)] transition-colors text-left">
-                  <div className="flex items-center gap-3">
-                    <Icon className="h-5 w-5 text-[var(--text-secondary)]" />
-                    <span className="font-medium">{label}</span>
-                  </div>
-                  <ChevronRight className="h-5 w-5 text-[var(--text-tertiary)]" />
-                </button>
+              <Link
+                key={href}
+                href={href}
+                className="w-full p-4 flex items-center justify-between rounded-lg hover:bg-[var(--bg-hover)] transition-colors text-left hover:no-underline"
+              >
+                <div className="flex items-center gap-3">
+                  <Icon className="h-5 w-5 text-[var(--text-secondary)]" />
+                  <span className="font-medium">{label}</span>
+                </div>
+                <ChevronRight className="h-5 w-5 text-[var(--text-tertiary)]" />
               </Link>
             ))}
           </div>

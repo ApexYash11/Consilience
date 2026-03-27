@@ -33,21 +33,20 @@ export function MobileBottomNav() {
     <nav className="fixed bottom-0 left-0 right-0 border-t border-[var(--border-default)] bg-[var(--bg-surface)] md:hidden">
       <div className="flex h-16 items-center justify-around">
         {navItems.map(({ label, href, icon: Icon }) => (
-          <Link key={href} href={href} className="flex-1">
-            <button
-              type="button"
-              aria-current={isActive(href) ? "page" : undefined}
-              className={cn(
-                "flex h-full w-full flex-col items-center justify-center gap-1 text-xs transition-colors",
-                isActive(href)
-                  ? "text-[var(--text-primary)]"
-                  : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
-              )}
-              title={label}
-            >
-              <Icon className="h-5 w-5" />
-              <span className="truncate">{label}</span>
-            </button>
+          <Link
+            key={href}
+            href={href}
+            className={cn(
+              "flex flex-1 h-16 flex-col items-center justify-center gap-1 text-xs transition-colors hover:no-underline",
+              isActive(href)
+                ? "text-[var(--text-primary)]"
+                : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
+            )}
+            aria-current={isActive(href) ? "page" : undefined}
+            title={label}
+          >
+            <Icon className="h-5 w-5" />
+            <span className="truncate">{label}</span>
           </Link>
         ))}
       </div>

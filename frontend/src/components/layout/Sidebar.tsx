@@ -30,6 +30,7 @@ export function Sidebar({ open = true, onClose }: SidebarProps) {
   ];
 
   const isActive = (href: string) => {
+    if (!pathname) return false;
     if (href === "/dashboard") {
       return pathname === "/dashboard";
     }
@@ -49,20 +50,19 @@ export function Sidebar({ open = true, onClose }: SidebarProps) {
         {isAuthenticated ? (
           <>
             {dashboardNavItems.map(({ label, href, icon: Icon }) => (
-              <Link key={href} href={href}>
-                <button
-                  type="button"
-                  aria-current={isActive(href) ? "page" : undefined}
-                  className={cn(
-                    "flex w-full items-center gap-2.5 rounded-[var(--r-md)] px-3 py-2 text-sm transition-colors",
-                    isActive(href)
-                      ? "bg-[var(--bg-active)] text-[var(--text-primary)]"
-                      : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                  )}
-                >
-                  <Icon className="h-4 w-4" />
-                  <span>{label}</span>
-                </button>
+              <Link
+                key={href}
+                href={href}
+                className={cn(
+                  "flex w-full items-center gap-2.5 rounded-[var(--r-md)] px-3 py-2 text-sm transition-colors hover:no-underline",
+                  isActive(href)
+                    ? "bg-[var(--bg-active)] text-[var(--text-primary)]"
+                    : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                )}
+                aria-current={isActive(href) ? "page" : undefined}
+              >
+                <Icon className="h-4 w-4" />
+                <span>{label}</span>
               </Link>
             ))}
 

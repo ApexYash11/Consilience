@@ -13,7 +13,7 @@ export function Shell({ children }: ShellProps) {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
 
-  // Initialize dark mode from localStorage
+  // Initialize dark mode from documentElement's data-theme attribute
   useEffect(() => {
     const htmlElement = document.documentElement;
     const currentTheme = htmlElement.getAttribute("data-theme") || "light";

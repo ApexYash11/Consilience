@@ -23,10 +23,15 @@ export interface ResearchListResponse {
 
 export function useResearchTasks(page: number = 1, pageSize: number = 10) {
   const [data, setData] = useState<ResearchListResponse | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchTasks = useCallback(async () => {
+    // Skip on server-side rendering
+    if (typeof window === "undefined") {
+      return;
+    }
+
     setLoading(true);
     setError(null);
 

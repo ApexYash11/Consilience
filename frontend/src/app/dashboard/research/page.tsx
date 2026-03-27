@@ -48,7 +48,10 @@ export default function ResearchPage() {
   const formatDate = (dateString: string) => {
     try {
       const date = new Date(dateString)
-      return date.toLocaleDateString("en-US", {
+      if (Number.isNaN(date.getTime())) {
+        return dateString
+      }
+      return date.toLocaleDateString(undefined, {
         month: "short",
         day: "numeric",
         year: "numeric",
@@ -131,11 +134,21 @@ export default function ResearchPage() {
           {data && data.tasks.length > 0 && (
             <div className="space-y-4">
               <div className="grid grid-cols-1 gap-4">
-                {data.tasks.map((task) => (
-                  <Card
+                {data.tasks.map((task) => {
+                  const handleClick = () => router.push(`/dashboard/research/${task.task_id}`)
+                  return (
+                  <div
                     key={task.task_id}
-                    className="p-4 hover:shadow-md transition-shadow cursor-pointer"
-                    onClick={() => router.push(`/dashboard/research/${task.task_id}`)}
+                    role="button"
+                    tabIndex={0}
+                    className="p-4 rounded-lg hover:shadow-md transition-shadow cursor-pointer border border-[var(--border-default)] bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)]"
+                    onClick={handleClick}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault()
+                        handleClick()
+                      }
+                    }}
                   >
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1 min-w-0">
@@ -179,8 +192,9 @@ export default function ResearchPage() {
                         </div>
                       )}
                     </div>
-                  </Card>
-                ))}
+                  </div>
+                  )
+                })}
               </div>
 
               {/* Pagination */}

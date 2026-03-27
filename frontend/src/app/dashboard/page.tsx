@@ -82,7 +82,7 @@ export default function Dashboard() {
                     <div className="text-2xl font-semibold">
                       {card.prefix}{card.value}
                     </div>
-                    {card.total && (
+                    {card.total != null && (
                       <div className="text-xs text-[var(--text-tertiary)]">
                         of {card.total} available
                       </div>
