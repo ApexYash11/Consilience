@@ -5,17 +5,6 @@ import { motion } from 'framer-motion'
 import { Button } from '@/components/ui'
 import { ArrowRight } from 'lucide-react'
 
-// --- Framer Motion Variants ---
-const fadeDown = {
-  hidden: { opacity: 0, y: -20 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: 'easeOut' } }
-}
-
-const fadeUp = {
-  hidden: { opacity: 0, y: 20 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: 'easeOut' } }
-}
-
 export function Hero() {
   return (
     <section className="relative min-h-[calc(100vh-64px)] pt-20 overflow-hidden flex flex-col items-center">
@@ -31,7 +20,7 @@ export function Hero() {
           <motion.div
             initial="hidden"
             whileInView="visible"
-            viewport={{ once: false, amount: 0.15 }}
+            viewport={{ once: true, amount: 0.15 }}
             variants={{
               hidden: { opacity: 0, y: -20 },
               visible: { opacity: 1, y: 0, transition: { duration: 0.5, delay: 0 } }
@@ -47,7 +36,7 @@ export function Hero() {
           <motion.div
             initial="hidden"
             whileInView="visible"
-            viewport={{ once: false, amount: 0.15 }}
+            viewport={{ once: true, amount: 0.15 }}
             variants={{
               hidden: { opacity: 0, y: -20 },
               visible: { opacity: 1, y: 0, transition: { duration: 0.5, delay: 0.12 } }
@@ -67,7 +56,7 @@ export function Hero() {
           <motion.div
             initial="hidden"
             whileInView="visible"
-            viewport={{ once: false, amount: 0.15 }}
+            viewport={{ once: true, amount: 0.15 }}
             variants={{
               hidden: { opacity: 0, y: -20 },
               visible: { opacity: 1, y: 0, transition: { duration: 0.5, delay: 0.24 } }
@@ -83,7 +72,7 @@ export function Hero() {
           <motion.div
             initial="hidden"
             whileInView="visible"
-            viewport={{ once: false, amount: 0.15 }}
+            viewport={{ once: true, amount: 0.15 }}
             variants={{
               hidden: { opacity: 0, y: 20 },
               visible: { opacity: 1, y: 0, transition: { duration: 0.5, delay: 0.36 } }
@@ -112,7 +101,7 @@ export function Hero() {
           <motion.div
             initial="hidden"
             whileInView="visible"
-            viewport={{ once: false, amount: 0.15 }}
+            viewport={{ once: true, amount: 0.15 }}
             variants={{
               hidden: { opacity: 0 },
               visible: { opacity: 1, transition: { duration: 0.8, delay: 0.5 } }
