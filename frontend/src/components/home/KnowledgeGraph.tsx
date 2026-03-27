@@ -1,6 +1,10 @@
 'use client'
 
 import React, { useEffect, useRef } from 'react'
+import { colord, extend } from 'colord'
+import lchPlugin from 'colord/plugins/lch'
+
+extend([lchPlugin])
 
 interface Node {
   x: number
@@ -15,12 +19,19 @@ interface Node {
 
 // Convert CSS variable hex to RGB format recognizable by canvas
 function hexToRgb(hex: string): string {
+  const trimmed = hex.trim()
+  const parsed = colord(trimmed)
+  if (parsed.isValid()) {
+    const { r, g, b } = parsed.toRgb()
+    return `${r}, ${g}, ${b}`
+  }
+
   // Try to match shorthand or full hex
-  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex.trim()) ||
-                 /^#?([a-f\d])([a-f\d])([a-f\d])$/i.exec(hex.trim());
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(trimmed) ||
+                 /^#?([a-f\d])([a-f\d])([a-f\d])$/i.exec(trimmed)
                  
   if (result) {
-    if (result[0].length === 4) { // shorthand
+    if (result[1].length === 1) { // shorthand robust detection
        return `${parseInt(result[1]+result[1], 16)}, ${parseInt(result[2]+result[2], 16)}, ${parseInt(result[3]+result[3], 16)}`
     }
     return `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}`
@@ -59,8 +70,8 @@ export default function KnowledgeGraph() {
         nodes.push({
           x: Math.random() * window.innerWidth,
           y: Math.random() * window.innerHeight,
-          vx: (Math.random() - 0.5) * 0.12 * baseRadius,
-          vy: (Math.random() - 0.5) * 0.12 * baseRadius,
+          vx: (Math.random() - 0.5) * 0.35 * baseRadius,
+          vy: (Math.random() - 0.5) * 0.35 * baseRadius,
           baseRadius,
           baseAlpha: alpha,
           index,
@@ -89,9 +100,7 @@ export default function KnowledgeGraph() {
     window.addEventListener('resize', resizeCanvas)
 
     // Main render loop
-    let frameCount = 0
     const render = () => {
-      frameCount++
       ctx.clearRect(0, 0, canvas.width, canvas.height)
 
       // Only update positions if reduced motion is not preferred
@@ -123,7 +132,7 @@ export default function KnowledgeGraph() {
 
             const opacity = (1 - distance / CONNECTION_DISTANCE) * 0.07
             ctx.beginPath()
-            ctx.strokeStyle = `rgba(${nodeRgb}, ${opacity})`
+            ctx.strokeStyle = `rgba(${lineRgb}, ${opacity})`
             ctx.moveTo(nodes[i].x, nodes[i].y)
             ctx.lineTo(nodes[j].x, nodes[j].y)
             ctx.stroke()
