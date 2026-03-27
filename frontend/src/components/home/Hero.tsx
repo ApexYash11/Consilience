@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import { Button } from '@/components/ui'
 import { ArrowRight } from 'lucide-react'
@@ -13,6 +13,8 @@ export function Hero() {
   const [text, setText] = useState("")
   const [isDeleting, setIsDeleting] = useState(false)
   const prefersReducedMotion = useReducedMotion()
+  const mainTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const pauseTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     if (prefersReducedMotion) {
@@ -25,13 +27,17 @@ export function Hero() {
 
     const currentWord = WORDS[wordIndex]
     
-    const timeout = setTimeout(() => {
+    // Clear any existing timeouts first
+    if (mainTimeoutRef.current) clearTimeout(mainTimeoutRef.current)
+    if (pauseTimeoutRef.current) clearTimeout(pauseTimeoutRef.current)
+    
+    mainTimeoutRef.current = setTimeout(() => {
       if (!isDeleting) {
         if (text.length < currentWord.length) {
           setText(currentWord.slice(0, text.length + 1))
         } else {
           // Pause at the end of typing
-          setTimeout(() => setIsDeleting(true), 2000)
+          pauseTimeoutRef.current = setTimeout(() => setIsDeleting(true), 2000)
         }
       } else {
         if (text.length > 0) {
@@ -44,7 +50,10 @@ export function Hero() {
       }
     }, isDeleting ? 40 : 120) // 120ms to type, 40ms to delete
 
-    return () => clearTimeout(timeout)
+    return () => {
+      if (mainTimeoutRef.current) clearTimeout(mainTimeoutRef.current)
+      if (pauseTimeoutRef.current) clearTimeout(pauseTimeoutRef.current)
+    }
   }, [text, isDeleting, wordIndex, prefersReducedMotion])
 
   return (
