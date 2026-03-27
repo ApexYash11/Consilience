@@ -1,13 +1,54 @@
 'use client'
 
 import Link from 'next/link'
-import { motion } from 'framer-motion'
+import { useState, useEffect } from 'react'
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import { Button } from '@/components/ui'
 import { ArrowRight } from 'lucide-react'
 
+const WORDS = ["Reimagined", "Accelerated", "Verified", "Simplified"]
+
 export function Hero() {
+  const [wordIndex, setWordIndex] = useState(0)
+  const [text, setText] = useState("")
+  const [isDeleting, setIsDeleting] = useState(false)
+  const prefersReducedMotion = useReducedMotion()
+
+  useEffect(() => {
+    if (prefersReducedMotion) {
+      setText(WORDS[wordIndex])
+      const interval = setInterval(() => {
+        setWordIndex((prev) => (prev + 1) % WORDS.length)
+      }, 3200)
+      return () => clearInterval(interval)
+    }
+
+    const currentWord = WORDS[wordIndex]
+    
+    const timeout = setTimeout(() => {
+      if (!isDeleting) {
+        if (text.length < currentWord.length) {
+          setText(currentWord.slice(0, text.length + 1))
+        } else {
+          // Pause at the end of typing
+          setTimeout(() => setIsDeleting(true), 2000)
+        }
+      } else {
+        if (text.length > 0) {
+          setText(currentWord.slice(0, text.length - 1))
+        } else {
+          // Finish deleting, move to next word
+          setIsDeleting(false)
+          setWordIndex((prev) => (prev + 1) % WORDS.length)
+        }
+      }
+    }, isDeleting ? 40 : 120) // 120ms to type, 40ms to delete
+
+    return () => clearTimeout(timeout)
+  }, [text, isDeleting, wordIndex, prefersReducedMotion])
+
   return (
-    <section className="relative min-h-[calc(100vh-64px)] pt-20 overflow-hidden flex flex-col items-center">
+    <section className="relative min-h-[calc(100vh-64px)] pt-20 pb-16 overflow-hidden flex flex-col items-center justify-between">
       {/* Subtle background gradient - neutral */}
       <div className="absolute inset-0 -z-10">
         <div className="absolute top-20 right-0 h-96 w-96 bg-gradient-to-br from-neutral-200/10 to-transparent dark:from-neutral-800/10 rounded-full blur-3xl" />
@@ -48,7 +89,14 @@ export function Hero() {
             >
               Research Intelligence
               <br />
-              <span className="text-text-brand">Reimagined</span>
+              <span className="text-text-brand inline-flex items-center justify-start min-w-[320px] text-left">
+                <span>{text}</span>
+                <motion.span
+                  animate={{ opacity: [1, 0] }}
+                  transition={{ duration: 0.8, repeat: Infinity, ease: "linear" }}
+                  className="inline-block w-[4px] h-[0.9em] bg-foreground ml-1 mb-1 rounded-sm"
+                />
+              </span>
             </h1>
           </motion.div>
 

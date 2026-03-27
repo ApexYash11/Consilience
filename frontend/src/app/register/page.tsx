@@ -59,20 +59,24 @@ export default function RegisterPage() {
         <Button 
           onClick={() => startOAuthFlow('google')}
           variant="secondary" 
-          className="w-full flex items-center justify-center gap-2.5 h-10 border border-[var(--border-default)]"
+          className="w-full h-11 border border-[var(--border-default)]"
           aria-label="Sign up with Google"
         >
-          <GoogleIcon className="w-5 h-5 flex-shrink-0" />
-          <span className="whitespace-nowrap">Sign up with Google</span>
+          <span className="flex items-center justify-center gap-2.5 w-full">
+            <GoogleIcon className="w-5 h-5 flex-shrink-0" />
+            <span className="whitespace-nowrap">Sign up with Google</span>
+          </span>
         </Button>
         <Button 
           onClick={() => startOAuthFlow('github')}
           variant="secondary" 
-          className="w-full flex items-center justify-center gap-2.5 h-10 border border-[var(--border-default)]"
+          className="w-full h-11 border border-[var(--border-default)]"
           aria-label="Sign up with GitHub"
         >
-          <GitHubIcon className="w-5 h-5 flex-shrink-0 text-[var(--text-primary)]" />
-          <span className="whitespace-nowrap">Sign up with GitHub</span>
+          <span className="flex items-center justify-center gap-2.5 w-full">
+            <GitHubIcon className="w-5 h-5 flex-shrink-0 text-[var(--text-primary)]" />
+            <span className="whitespace-nowrap">Sign up with GitHub</span>
+          </span>
         </Button>
       </div>
 

@@ -79,20 +79,24 @@ export default function LoginPage() {
         <Button 
           onClick={() => startOAuthFlow('google', nextPath)}
           variant="secondary" 
-          className="w-full flex items-center justify-center gap-2.5 h-10 border border-[var(--border-default)]"
+          className="w-full h-11 border border-[var(--border-default)]"
           aria-label="Sign in with Google"
         >
-          <GoogleIcon className="w-5 h-5 flex-shrink-0" />
-          <span className="whitespace-nowrap">Sign in with Google</span>
+          <span className="flex items-center justify-center gap-2.5 w-full">
+            <GoogleIcon className="w-5 h-5 flex-shrink-0" />
+            <span className="whitespace-nowrap">Sign in with Google</span>
+          </span>
         </Button>
         <Button 
           onClick={() => startOAuthFlow('github', nextPath)}
           variant="secondary" 
-          className="w-full flex items-center justify-center gap-2.5 h-10 border border-[var(--border-default)]"
+          className="w-full h-11 border border-[var(--border-default)]"
           aria-label="Sign in with GitHub"
         >
-          <GitHubIcon className="w-5 h-5 flex-shrink-0 text-[var(--text-primary)]" />
-          <span className="whitespace-nowrap">Sign in with GitHub</span>
+          <span className="flex items-center justify-center gap-2.5 w-full">
+            <GitHubIcon className="w-5 h-5 flex-shrink-0 text-[var(--text-primary)]" />
+            <span className="whitespace-nowrap">Sign in with GitHub</span>
+          </span>
         </Button>
       </div>
 
