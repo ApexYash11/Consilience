@@ -11,18 +11,6 @@ import {
   LandingSectionSubtext,
 } from '@/components/landing'
 
-// --- Framer Motion Variants ---
-
-const fadeDown = {
-  hidden: { opacity: 0, y: -20 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: 'easeOut' } }
-}
-
-const slideRight = {
-  hidden: { opacity: 0, x: -15 },
-  visible: { opacity: 1, x: 0, transition: { duration: 0.4, ease: 'easeOut' } }
-}
-
 const priceSwap = {
   initial: { opacity: 0, y: -20 },
   animate: { opacity: 1, y: 0, transition: { duration: 0.3 } },
@@ -81,14 +69,14 @@ export function Pricing() {
   const [isYearly, setIsYearly] = useState(false)
 
   return (
-    <section className="relative py-20 md:py-32 px-4 sm:px-6 lg:px-8 bg-muted/40 overflow-hidden flex flex-col items-center">
+    <section className="relative py-20 md:py-32 px-4 sm:px-6 lg:px-8 overflow-hidden flex flex-col items-center">
       <div className="mx-auto max-w-7xl w-full">
         {/* Section Header */}
         <div className="text-center flex flex-col items-center mb-16">
           <motion.div
             initial="hidden"
             whileInView="visible"
-            viewport={{ once: false, amount: 0.15 }}
+            viewport={{ once: false, amount: 0.2 }}
             variants={{
               hidden: { opacity: 0, y: -20 },
               visible: { opacity: 1, y: 0, transition: { duration: 0.5, delay: 0 } }
@@ -103,7 +91,7 @@ export function Pricing() {
           <motion.div
             initial="hidden"
             whileInView="visible"
-            viewport={{ once: false, amount: 0.15 }}
+            viewport={{ once: false, amount: 0.2 }}
             variants={{
               hidden: { opacity: 0, y: -20 },
               visible: { opacity: 1, y: 0, transition: { duration: 0.5, delay: 0.12 } }
@@ -159,7 +147,7 @@ export function Pricing() {
               initial="hidden"
               whileInView="visible"
               whileHover={{ y: -6 }}
-              viewport={{ once: false, amount: 0.15 }}
+              viewport={{ once: false, amount: 0.2 }}
               variants={{
                 hidden: { opacity: 0, y: 30 },
                 visible: { 
@@ -223,7 +211,7 @@ export function Pricing() {
                         key={feature} 
                         initial="hidden"
                         whileInView="visible"
-                        viewport={{ once: false, amount: 0.15 }}
+                        viewport={{ once: false, amount: 0.2 }}
                         variants={{
                           hidden: { opacity: 0, x: -15 },
                           visible: { 
@@ -251,7 +239,7 @@ export function Pricing() {
                 <motion.div
                   initial="hidden"
                   whileInView="visible"
-                  viewport={{ once: false, amount: 0.15 }}
+                  viewport={{ once: false, amount: 0.2 }}
                   variants={{
                     hidden: { opacity: 0, y: 20 },
                     visible: { 

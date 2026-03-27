@@ -4,17 +4,6 @@ import { motion } from 'framer-motion'
 import { Card } from '@/components/ui'
 import { Brain, Zap, Shield, TrendingUp } from 'lucide-react'
 
-// --- Framer Motion Variants ---
-const fadeDown = {
-  hidden: { opacity: 0, y: -20 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: 'easeOut' } }
-}
-
-const fadeUp = {
-  hidden: { opacity: 0, y: 30 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: 'easeOut' } }
-}
-
 const features = [
   {
     icon: Brain,
@@ -40,14 +29,14 @@ const features = [
 
 export function Features() {
   return (
-    <section className="relative py-20 md:py-32 px-4 sm:px-6 lg:px-8 bg-background overflow-hidden">
+    <section className="relative py-20 md:py-32 px-4 sm:px-6 lg:px-8 overflow-hidden">
       <div className="mx-auto max-w-7xl">
         {/* Section Header */}
         <div className="text-center flex flex-col items-center space-y-4 mb-16">
           <motion.div
             initial="hidden"
             whileInView="visible"
-            viewport={{ once: false, amount: 0.15 }}
+            viewport={{ once: false, amount: 0.2 }}
             variants={{
               hidden: { opacity: 0, y: -20 },
               visible: { opacity: 1, y: 0, transition: { duration: 0.5, delay: 0 } }
@@ -64,7 +53,7 @@ export function Features() {
           <motion.div
             initial="hidden"
             whileInView="visible"
-            viewport={{ once: false, amount: 0.15 }}
+            viewport={{ once: false, amount: 0.2 }}
             variants={{
               hidden: { opacity: 0, y: -20 },
               visible: { opacity: 1, y: 0, transition: { duration: 0.5, delay: 0.12 } }
@@ -86,7 +75,7 @@ export function Features() {
                 initial="hidden"
                 whileInView="visible"
                 whileHover={{ y: -6 }}
-                viewport={{ once: false, amount: 0.15 }}
+                viewport={{ once: false, amount: 0.2 }}
                 variants={{
                   hidden: { opacity: 0, y: 30 },
                   visible: { 

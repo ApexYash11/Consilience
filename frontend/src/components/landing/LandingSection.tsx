@@ -30,7 +30,7 @@ export function LandingSection({ children, className = '', ...props }: LandingCo
       className={className}
       initial="hidden"
       whileInView="visible"
-      viewport={{ once: true, margin: "-50px" }}
+      viewport={{ once: false, amount: 0.2, margin: "-50px" }}
       variants={{
         visible: {
           transition: {
