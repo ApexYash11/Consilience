@@ -86,6 +86,48 @@ class ResearchService:
         return result.scalar_one_or_none()
 
     @staticmethod
+    async def get_user_research_tasks(
+        session: AsyncSession,
+        user_id: UUID,
+        page: int = 1,
+        page_size: int = 10,
+    ) -> tuple[list[ResearchTaskDB], int]:
+        """
+        Retrieve paginated research tasks for a user, ordered by created_at descending.
+
+        Args:
+            session: AsyncSession for database operations
+            user_id: UUID of the user
+            page: Page number (1-indexed)
+            page_size: Number of tasks per page
+
+        Returns:
+            Tuple of (task list, total count)
+        """
+        from sqlalchemy import select, func, desc
+
+        # Get total count
+        count_result = await session.execute(
+            select(func.count(ResearchTaskDB.id)).where(
+                ResearchTaskDB.user_id == user_id
+            )
+        )
+        total_count = count_result.scalar() or 0
+
+        # Get paginated results
+        offset = (page - 1) * page_size
+        result = await session.execute(
+            select(ResearchTaskDB)
+            .where(ResearchTaskDB.user_id == user_id)
+            .order_by(desc(ResearchTaskDB.created_at))
+            .offset(offset)
+            .limit(page_size)
+        )
+        tasks = list(result.scalars().all())
+        
+        return tasks, total_count
+
+    @staticmethod
     async def update_research_task(
         session: AsyncSession,
         task_id: UUID,

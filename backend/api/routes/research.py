@@ -58,6 +58,29 @@ class ResearchResultResponse(BaseModel):
     total_tokens: int
 
 
+class ResearchTaskListItem(BaseModel):
+    """Simplified research task for list views."""
+    task_id: str
+    title: str
+    description: str
+    depth: str
+    status: str
+    created_at: datetime
+    completed_at: Optional[datetime] = None
+    estimated_cost_usd: Optional[float] = None
+    actual_cost_usd: Optional[float] = None
+    progress_percent: int = 0
+
+
+class ResearchListResponse(BaseModel):
+    """Paginated list of research tasks."""
+    tasks: list[ResearchTaskListItem]
+    total_count: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
 router = APIRouter(tags=["research"])
 
 # Background task tracking
@@ -235,6 +258,97 @@ async def _execute_research_background(
         # Clean up the task from tracking
         if str(task_id) in _running_tasks:  # type: ignore
             del _running_tasks[str(task_id)]  # type: ignore
+
+
+@router.get("/list", response_model=ResearchListResponse, summary="List user's research tasks", description="Retrieve paginated list of all research tasks for the authenticated user.", tags=["research"])
+async def list_research_tasks(
+    page: int = 1,
+    page_size: int = 10,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),  # enforces auth
+) -> ResearchListResponse:
+    """
+    GET /api/research/list
+
+    Retrieves paginated list of research tasks for the authenticated user.
+    
+    Query Parameters:
+    - page: Page number (1-indexed), default 1
+    - page_size: Number of tasks per page, default 10
+
+    Returns:
+    {
+        "tasks": [
+            {
+                "task_id": "550e8400-e29b-41d4-a716-446655440000",
+                "title": "Research: Climate change impacts on agriculture",
+                "description": "Standard research task for climate change impacts on agriculture",
+                "depth": "standard",
+                "status": "completed",
+                "created_at": "2026-03-27T10:30:00Z",
+                "completed_at": "2026-03-27T10:35:00Z",
+                "estimated_cost_usd": 0.0,
+                "actual_cost_usd": 0.0,
+                "progress_percent": 100
+            }
+        ],
+        "total_count": 25,
+        "page": 1,
+        "page_size": 10,
+        "total_pages": 3
+    }
+    """
+    try:
+        # Fetch paginated research tasks
+        tasks, total_count = await ResearchService.get_user_research_tasks(
+            session=db,
+            user_id=UUID(user.user_id),  # type: ignore
+            page=max(1, page),  # Ensure page >= 1
+            page_size=min(page_size, 100),  # Cap page_size at 100
+        )
+
+        # Convert to list items
+        task_items = []
+        for task in tasks:
+            # Determine progress based on status
+            progress_percent = 0
+            if task.status == TaskStatus.COMPLETED:
+                progress_percent = 100
+            elif task.status == TaskStatus.RUNNING:
+                progress_percent = 50  # In-progress indicator
+            elif task.status == TaskStatus.FAILED:
+                progress_percent = 0
+            
+            item = ResearchTaskListItem(
+                task_id=str(task.id),
+                title=task.title,
+                description=task.description,
+                depth=str(task.research_depth),
+                status=str(task.status),
+                created_at=task.created_at,
+                completed_at=task.completed_at,
+                estimated_cost_usd=float(task.estimated_cost_usd) if task.estimated_cost_usd else None,
+                actual_cost_usd=float(task.actual_cost_usd) if task.actual_cost_usd else None,
+                progress_percent=progress_percent,
+            )
+            task_items.append(item)
+
+        # Calculate total pages
+        total_pages = (total_count + page_size - 1) // page_size if page_size > 0 else 0
+
+        return ResearchListResponse(
+            tasks=task_items,
+            total_count=total_count,
+            page=page,
+            page_size=page_size,
+            total_pages=total_pages,
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to list research tasks: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=f"Failed to list research tasks: {str(e)}"
+        )
 
 
 @router.post("/standard", response_model=CreateResearchResponse, summary="Create standard research task", description="Initiates a standard research task that runs in the background. Results are processed asynchronously.", tags=["research"])

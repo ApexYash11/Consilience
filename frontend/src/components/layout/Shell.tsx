@@ -1,55 +1,75 @@
-import type { ReactNode } from "react";
-import { Home, Search, Settings, User } from "lucide-react";
-import { cn } from "@/lib/cn";
+"use client";
+
+import { useState, useEffect, ReactNode } from "react";
+import { Topbar } from "./Topbar";
+import { Sidebar } from "./Sidebar";
+import { MobileBottomNav } from "./MobileBottomNav";
 
 type ShellProps = {
   children: ReactNode;
 };
 
-const navItems = [
-  { label: "Home", icon: Home, active: true },
-  { label: "Research", icon: Search },
-  { label: "Settings", icon: Settings },
-  { label: "Account", icon: User },
-];
-
 export function Shell({ children }: ShellProps) {
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(false);
+
+  // Initialize dark mode from localStorage
+  useEffect(() => {
+    const htmlElement = document.documentElement;
+    const currentTheme = htmlElement.getAttribute("data-theme") || "light";
+    setIsDarkMode(currentTheme === "dark");
+  }, []);
+
+  const handleThemeToggle = () => {
+    const htmlElement = document.documentElement;
+    const newTheme = isDarkMode ? "light" : "dark";
+    htmlElement.setAttribute("data-theme", newTheme);
+    localStorage.setItem("theme", newTheme);
+    setIsDarkMode(!isDarkMode);
+  };
+
+  const closeMobileSidebar = () => {
+    setMobileSidebarOpen(false);
+  };
+
   return (
-    <div className="min-h-screen bg-[var(--bg-base)] text-[var(--text-primary)]">
-      <header className="sticky top-0 z-20 h-12 border-b border-[var(--border-default)] bg-[var(--bg-surface)] px-4">
-        <div className="mx-auto flex h-full max-w-[1280px] items-center justify-between">
-          <p className="text-sm font-medium">Consilience</p>
-          <p className="text-xs text-[var(--text-tertiary)]">Frontend Phase 0</p>
-        </div>
-      </header>
+    <div className="min-h-screen flex flex-col bg-[var(--bg-base)] text-[var(--text-primary)]">
+      {/* Topbar */}
+      <Topbar
+        mobileSidebarOpen={mobileSidebarOpen}
+        onMobileSidebarToggle={() => setMobileSidebarOpen(!mobileSidebarOpen)}
+        isDarkMode={isDarkMode}
+        onThemeToggle={handleThemeToggle}
+      />
 
-      <div className="mx-auto grid min-h-[calc(100vh-48px)] max-w-[1280px] grid-cols-1 md:grid-cols-[216px_1fr]">
-        <aside className="hidden border-r border-[var(--border-default)] bg-[var(--bg-sidebar)] md:block">
-          <nav className="p-3">
-            <ul className="space-y-1">
-              {navItems.map(({ label, icon: Icon, active }) => (
-                <li key={label}>
-                  <button
-                    type="button"
-                    aria-current={active ? "page" : undefined}
-                    className={cn(
-                      "flex w-full items-center gap-2 rounded-[var(--r-md)] px-3 py-2 text-sm",
-                      active
-                        ? "bg-[var(--bg-active)] text-[var(--text-primary)]"
-                        : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                    )}
-                  >
-                    <Icon className="h-4 w-4" />
-                    <span>{label}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </nav>
-        </aside>
+      {/* Main Content Area */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Desktop Sidebar */}
+        <Sidebar open={true} onClose={closeMobileSidebar} />
 
-        <main className="p-4 md:p-5">{children}</main>
+        {/* Mobile Sidebar Overlay */}
+        {mobileSidebarOpen && (
+          <div
+            className="fixed inset-0 z-30 bg-black/50 md:hidden"
+            onClick={closeMobileSidebar}
+            aria-hidden
+          />
+        )}
+        {mobileSidebarOpen && (
+          <div className="fixed inset-y-0 left-0 z-40 w-[200px] md:hidden">
+            <Sidebar open={mobileSidebarOpen} onClose={closeMobileSidebar} />
+          </div>
+        )}
+
+        {/* Main Content */}
+        <main className="flex-1 overflow-y-auto pb-20 md:pb-0">
+          <div className="p-4 md:p-6">{children}</div>
+        </main>
       </div>
+
+      {/* Mobile Bottom Navigation */}
+      <MobileBottomNav />
     </div>
   );
 }
+
