@@ -39,15 +39,15 @@ export function useResearchStatus(taskId: string | null): UseResearchStatusRetur
   // Poll timeout ID for cleanup
   const timeoutIdRef = useRef<NodeJS.Timeout | null>(null);
 
-  const fetchStatus = useCallback(async () => {
+  const fetchStatus = useCallback(async (): Promise<ResearchStatus | null> => {
     if (!taskId) {
       setIsLoading(false);
-      return;
+      return null;
     }
 
     // Prevent overlapping requests
     if (isFetchingRef.current) {
-      return;
+      return null;
     }
 
     isFetchingRef.current = true;
@@ -62,7 +62,7 @@ export function useResearchStatus(taskId: string | null): UseResearchStatusRetur
         }
         isFetchingRef.current = false;
         setIsPolling(false);
-        return;
+        return null;
       }
 
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -100,7 +100,7 @@ export function useResearchStatus(taskId: string | null): UseResearchStatusRetur
         isFetchingRef.current = false;
         setIsPolling(false);
         setIsLoading(false);
-        return;
+        return null;
       }
 
       const data: ResearchStatus = await response.json();
@@ -108,7 +108,7 @@ export function useResearchStatus(taskId: string | null): UseResearchStatusRetur
       if (!isMountedRef.current) {
         isFetchingRef.current = false;
         setIsPolling(false);
-        return;
+        return null;
       }
 
       // Validate response structure
@@ -117,7 +117,7 @@ export function useResearchStatus(taskId: string | null): UseResearchStatusRetur
         isFetchingRef.current = false;
         setIsPolling(false);
         setIsLoading(false);
-        return;
+        return null;
       }
 
       // Ensure progress never goes backward
@@ -133,11 +133,15 @@ export function useResearchStatus(taskId: string | null): UseResearchStatusRetur
       if (data.status === "completed" || data.status === "failed") {
         setIsPolling(false);
       }
+
+      // Return the fetched data for use in promise callbacks
+      return data;
     } catch (err) {
       if (isMountedRef.current) {
         const message = err instanceof Error ? err.message : "Unknown error occurred";
         setError(`Failed to fetch status: ${message}`);
       }
+      return null;
     } finally {
       isFetchingRef.current = false;
       setIsPolling(false);
@@ -150,9 +154,9 @@ export function useResearchStatus(taskId: string | null): UseResearchStatusRetur
     const completedRef = { current: false };
 
     // Initial fetch
-    void fetchStatus().then(() => {
-      // Check if status is terminal after initial fetch
-      if (status?.status === "completed" || status?.status === "failed") {
+    void fetchStatus().then((data) => {
+      // Check if status is terminal based on fetched data
+      if (data?.status === "completed" || data?.status === "failed") {
         completedRef.current = true;
       }
     });
@@ -165,9 +169,9 @@ export function useResearchStatus(taskId: string | null): UseResearchStatusRetur
       if (completedRef.current) return;
 
       timeoutIdRef.current = setTimeout(() => {
-        void fetchStatus().then(() => {
-          // Update terminal state
-          if (status?.status === "completed" || status?.status === "failed") {
+        void fetchStatus().then((data) => {
+          // Update terminal state based on returned data
+          if (data?.status === "completed" || data?.status === "failed") {
             completedRef.current = true;
           }
           

@@ -17,8 +17,8 @@ export function LiveSourcesFeed({ sources = [], maxVisible = 4 }: LiveSourcesFee
     ease: "easeOut",
   };
 
-  // Deduplicate sources by URL and limit visible items
-  const deduplicatedSources = useMemo(() => {
+  // Deduplicate sources by URL
+  const { totalUnique, visibleSources } = useMemo(() => {
     const seen = new Set<string>();
     const unique: Source[] = [];
 
@@ -29,24 +29,28 @@ export function LiveSourcesFeed({ sources = [], maxVisible = 4 }: LiveSourcesFee
       }
     }
 
-    return unique.slice(0, maxVisible);
+    // Return total count and sliced visible items
+    return {
+      totalUnique: unique.length,
+      visibleSources: unique.slice(0, maxVisible),
+    };
   }, [sources, maxVisible]);
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <div className="text-sm font-medium text-[var(--text-secondary)]">Sources Found</div>
-        {deduplicatedSources.length > 0 && (
+        {visibleSources.length > 0 && (
           <div className="text-xs text-[var(--text-tertiary)]">
-            {deduplicatedSources.length} source{deduplicatedSources.length !== 1 ? "s" : ""}
-            {deduplicatedSources.length > maxVisible && ` (showing ${maxVisible})`}
+            {totalUnique} source{totalUnique !== 1 ? "s" : ""}
+            {totalUnique > maxVisible && ` (showing ${maxVisible})`}
           </div>
         )}
       </div>
 
       <div className="space-y-2 min-h-[60px]">
         <AnimatePresence mode="popLayout">
-          {deduplicatedSources.length === 0 ? (
+          {visibleSources.length === 0 ? (
             <motion.div
               key="empty"
               initial={{ opacity: 0 }}
@@ -57,7 +61,7 @@ export function LiveSourcesFeed({ sources = [], maxVisible = 4 }: LiveSourcesFee
               Waiting for sources...
             </motion.div>
           ) : (
-            deduplicatedSources.map((source, idx) => (
+            visibleSources.map((source, idx) => (
               <motion.a
                 key={source.url}
                 href={source.url}

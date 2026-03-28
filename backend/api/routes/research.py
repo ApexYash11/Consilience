@@ -895,8 +895,9 @@ async def delete_research_task(
             except Exception as e:
                 logger.error(f"Error waiting for task {task_uuid} cancellation: {str(e)}")
             finally:
-                # Always remove from running tasks after attempting cancellation
-                del _running_tasks[str(task_uuid)]  # type: ignore
+                # Safely remove from running tasks - use pop with default to avoid KeyError
+                # The background task's finally block may have already removed the entry
+                _running_tasks.pop(str(task_uuid), None)  # type: ignore
 
         # Delete task from database
         await ResearchService.delete_research_task(db, task_uuid)
