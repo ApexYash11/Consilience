@@ -195,6 +195,44 @@ class ResearchService:
         return task
 
     @staticmethod
+    async def delete_research_task(
+        session: AsyncSession,
+        task_id: UUID,
+    ) -> bool:
+        """
+        Delete a research task and all associated records.
+
+        Args:
+            session: AsyncSession for database operations
+            task_id: UUID of the task to delete
+
+        Returns:
+            True if task was deleted, False if not found
+        """
+        from sqlalchemy import delete
+        from ..database.models import ResearchTaskDB, ResearchCheckpointDB, AgentActionLogDB
+        
+        # First delete associated records
+        await session.execute(
+            delete(ResearchCheckpointDB).where(ResearchCheckpointDB.task_id == task_id)
+        )
+        await session.execute(
+            delete(AgentActionLogDB).where(AgentActionLogDB.task_id == task_id)
+        )
+        
+        # Then delete the task itself
+        result = await session.execute(
+            delete(ResearchTaskDB).where(ResearchTaskDB.id == task_id)
+        )
+        await session.commit()
+        
+        deleted_count = result.rowcount or 0
+        if deleted_count > 0:
+            logger.info(f"Deleted research task {task_id}")
+        
+        return deleted_count > 0
+
+    @staticmethod
     async def log_agent_action(
         session: AsyncSession,
         task_id: UUID,
@@ -343,14 +381,18 @@ class ResearchService:
 
         Enables resume if agent fails.
         """
+        # Handle both string and enum types for status fields
+        status_before_value = status_before.value if isinstance(status_before, TaskStatus) else str(status_before)
+        status_after_value = status_after.value if isinstance(status_after, TaskStatus) else str(status_after)
+        
         checkpoint = ResearchCheckpointDB(
             task_id=task_id,
             agent_name=agent_name,
             agent_type=agent_type,
             sequence_number=sequence_number,
-            state_snapshot_json=state_snapshot.model_dump(),
-            status_before=status_before.value,
-            status_after=status_after.value,
+            state_snapshot_json=state_snapshot.model_dump(mode='json', exclude={'created_at', 'updated_at'}),
+            status_before=status_before_value,
+            status_after=status_after_value,
             duration_seconds=duration_seconds,
             is_resumable=error is None,
             error_message=error,

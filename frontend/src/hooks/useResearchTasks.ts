@@ -36,7 +36,7 @@ export function useResearchTasks(page: number = 1, pageSize: number = 10) {
     setError(null);
 
     try {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("consilience_access_token");
       if (!token) {
         setError("No authentication token found");
         setLoading(false);

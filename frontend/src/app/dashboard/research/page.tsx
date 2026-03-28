@@ -6,12 +6,45 @@ import { Shell } from "@/components/layout"
 import { Button, Card } from "@/components/ui"
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute"
 import { useResearchTasks } from "@/hooks/useResearchTasks"
-import { Clock, CheckCircle, AlertCircle, Loader, Plus } from "lucide-react"
+import { Clock, CheckCircle, AlertCircle, Loader, Plus, Trash2 } from "lucide-react"
 
 export default function ResearchPage() {
   const router = useRouter()
   const [page, setPage] = useState(1)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
   const { data, loading, error, refetch } = useResearchTasks(page, 10)
+
+  const handleDelete = async (e: React.MouseEvent, taskId: string) => {
+    e.stopPropagation()  // Prevent navigation when clicking delete
+    
+    if (!confirm("Are you sure you want to delete this research task? This action cannot be undone.")) {
+      return
+    }
+
+    setDeletingId(taskId)
+    try {
+      const response = await fetch(`/api/research/${taskId}`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        alert(`Failed to delete task: ${error.detail || "Unknown error"}`)
+        return
+      }
+
+      // Refresh the task list
+      await refetch()
+    } catch (err) {
+      console.error("Delete error:", err)
+      alert("Failed to delete task. Please try again.")
+    } finally {
+      setDeletingId(null)
+    }
+  }
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -191,6 +224,18 @@ export default function ResearchPage() {
                           </div>
                         </div>
                       )}
+                      <button
+                        onClick={(e) => handleDelete(e, task.task_id)}
+                        disabled={deletingId === task.task_id}
+                        className="p-2 text-[var(--text-tertiary)] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Delete task"
+                      >
+                        {deletingId === task.task_id ? (
+                          <Loader className="h-5 w-5 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-5 w-5" />
+                        )}
+                      </button>
                     </div>
                   </div>
                   )

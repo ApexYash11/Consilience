@@ -466,9 +466,13 @@ async def get_research_status(
         if not task:
             raise HTTPException(status_code=404, detail="Task not found")
 
-        # Verify user owns task
-        if task.user_id != UUID(user.user_id):  # type: ignore
-            raise HTTPException(status_code=403, detail="Not authorized")
+        # Verify user owns task - handle both UUID and string types
+        task_user_id_str = str(task.user_id) if task.user_id else None
+        current_user_id_str = str(user.user_id) if hasattr(user, 'user_id') and user.user_id else None  # type: ignore
+        
+        if not task_user_id_str or not current_user_id_str or task_user_id_str != current_user_id_str:
+            logger.debug(f"Authorization failed: task_user={task_user_id_str}, current_user={current_user_id_str}")
+            raise HTTPException(status_code=403, detail="Not authorized to access this task")
 
         # Estimate progress based on status
         progress_map = {
@@ -477,11 +481,17 @@ async def get_research_status(
             TaskStatus.COMPLETED: 100,
             TaskStatus.FAILED: 0,
         }
-        progress = progress_map.get(task.status, 0)  # type: ignore
+        
+        # Handle both enum and string status types
+        task_status = task.status  # type: ignore
+        if isinstance(task_status, str):
+            task_status = TaskStatus(task_status)
+        
+        progress = progress_map.get(task_status, 0)
 
         return ResearchStatusResponse(
             task_id=str(task.id),
-            status=task.status.value,  # type: ignore
+            status=task_status.value if isinstance(task_status, TaskStatus) else str(task_status),
             progress_percent=progress,
             cost_so_far=float(task.actual_cost_usd or 0.0),  # type: ignore
             tokens_used=task.tokens_used or 0,  # type: ignore
@@ -528,15 +538,23 @@ async def get_research_result(
         if not task:
             raise HTTPException(status_code=404, detail="Task not found")
 
-        # Verify user owns task
-        if task.user_id != UUID(user.user_id):  # type: ignore
-            raise HTTPException(status_code=403, detail="Not authorized")
+        # Verify user owns task - handle both UUID and string types
+        task_user_id_str = str(task.user_id) if task.user_id else None
+        current_user_id_str = str(user.user_id) if hasattr(user, 'user_id') and user.user_id else None  # type: ignore
+        
+        if not task_user_id_str or not current_user_id_str or task_user_id_str != current_user_id_str:
+            logger.debug(f"Authorization failed: task_user={task_user_id_str}, current_user={current_user_id_str}")
+            raise HTTPException(status_code=403, detail="Not authorized to access this task")
 
         # Check if task is completed
-        if task.status != TaskStatus.COMPLETED:  # type: ignore
+        task_status = task.status  # type: ignore
+        if isinstance(task_status, str):
+            task_status = TaskStatus(task_status)
+            
+        if task_status != TaskStatus.COMPLETED:
             raise HTTPException(
                 status_code=400,
-                detail=f"Task not completed. Current status: {task.status.value}",  # type: ignore
+                detail=f"Task not completed. Current status: {task_status.value}",
             )
 
         # Extract result data from final_state_json if available, fallback to metadata_json
@@ -544,7 +562,7 @@ async def get_research_result(
 
         return ResearchResultResponse(
             task_id=str(task.id),
-            status=task.status.value,  # type: ignore
+            status=task_status.value if isinstance(task_status, TaskStatus) else str(task_status),
             final_paper=result_data.get("final_paper", ""),  # type: ignore
             sources=result_data.get("sources", []),  # type: ignore
             contradictions=result_data.get("contradictions", []),  # type: ignore
@@ -694,9 +712,13 @@ async def get_deep_research_status(
         if not task:
             raise HTTPException(status_code=404, detail="Task not found")
 
-        # Verify user owns task
-        if task.user_id != UUID(user.user_id):  # type: ignore
-            raise HTTPException(status_code=403, detail="Not authorized")
+        # Verify user owns task - handle both UUID and string types
+        task_user_id_str = str(task.user_id) if task.user_id else None
+        current_user_id_str = str(user.user_id) if hasattr(user, 'user_id') and user.user_id else None  # type: ignore
+        
+        if not task_user_id_str or not current_user_id_str or task_user_id_str != current_user_id_str:
+            logger.debug(f"Authorization failed: task_user={task_user_id_str}, current_user={current_user_id_str}")
+            raise HTTPException(status_code=403, detail="Not authorized to access this task")
 
         # Verify it's a deep research task
         if not (task.metadata_json and task.metadata_json.get("research_depth") == "deep"):  # type: ignore
@@ -709,11 +731,17 @@ async def get_deep_research_status(
             TaskStatus.COMPLETED: 100,
             TaskStatus.FAILED: 0,
         }
-        progress = progress_map.get(task.status, 0)  # type: ignore
+        
+        # Handle both enum and string status types
+        task_status = task.status  # type: ignore
+        if isinstance(task_status, str):
+            task_status = TaskStatus(task_status)
+        
+        progress = progress_map.get(task_status, 0)
 
         return ResearchStatusResponse(
             task_id=str(task.id),
-            status=task.status.value,  # type: ignore
+            status=task_status.value if isinstance(task_status, TaskStatus) else str(task_status),
             progress_percent=progress,
             cost_so_far=float(task.actual_cost_usd or 0.0),  # type: ignore
             tokens_used=task.tokens_used or 0,  # type: ignore
@@ -769,18 +797,30 @@ async def get_deep_research_result(
             raise HTTPException(status_code=404, detail="Task not found")
 
         # Verify user owns task
-        if task.user_id != UUID(user.user_id):  # type: ignore
-            raise HTTPException(status_code=403, detail="Not authorized")
+        if not task:
+            raise HTTPException(status_code=404, detail="Task not found")
+
+        # Verify user owns task - handle both UUID and string types
+        task_user_id_str = str(task.user_id) if task.user_id else None
+        current_user_id_str = str(user.user_id) if hasattr(user, 'user_id') and user.user_id else None  # type: ignore
+        
+        if not task_user_id_str or not current_user_id_str or task_user_id_str != current_user_id_str:
+            logger.debug(f"Authorization failed: task_user={task_user_id_str}, current_user={current_user_id_str}")
+            raise HTTPException(status_code=403, detail="Not authorized to access this task")
 
         # Verify it's a deep research task
         if not (task.metadata_json and task.metadata_json.get("research_depth") == "deep"):  # type: ignore
             raise HTTPException(status_code=404, detail="Task not found")
 
         # Check if task is completed
-        if task.status != TaskStatus.COMPLETED:  # type: ignore
+        task_status = task.status  # type: ignore
+        if isinstance(task_status, str):
+            task_status = TaskStatus(task_status)
+            
+        if task_status != TaskStatus.COMPLETED:
             raise HTTPException(
                 status_code=400,
-                detail=f"Task not completed. Current status: {task.status.value}",  # type: ignore
+                detail=f"Task not completed. Current status: {task_status.value}",
             )
 
         # Extract result data from final_state_json
@@ -788,7 +828,7 @@ async def get_deep_research_result(
 
         return ResearchResultResponse(
             task_id=str(task.id),
-            status=task.status.value,  # type: ignore
+            status=task_status.value if isinstance(task_status, TaskStatus) else str(task_status),
             final_paper=result_data.get("final_paper", ""),  # type: ignore
             sources=result_data.get("sources", []),  # type: ignore
             contradictions=result_data.get("contradictions", []),  # type: ignore
@@ -802,6 +842,71 @@ async def get_deep_research_result(
         logger.error(f"Failed to get deep research result: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500, detail="Failed to get deep research result"
+        )
+
+
+@router.delete("/{task_id}", summary="Delete research task", description="Delete a research task. Can only delete tasks owned by the current user.", tags=["research"])
+async def delete_research_task(
+    task_id: str,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),  # type: ignore
+) -> dict:
+    """
+    DELETE /api/research/{task_id}
+
+    Deletes a research task owned by the current user.
+    
+    Returns:
+    {
+        "success": true,
+        "message": "Task deleted successfully"
+    }
+    """
+    try:
+        # Validate UUID format
+        try:
+            task_uuid = UUID(task_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid task_id format")
+
+        # Get task from database
+        task = await ResearchService.get_research_task(db, task_uuid)
+
+        if not task:
+            raise HTTPException(status_code=404, detail="Task not found")
+
+        # Verify user owns task - handle both UUID and string types
+        task_user_id_str = str(task.user_id) if task.user_id else None
+        current_user_id_str = str(user.user_id) if hasattr(user, 'user_id') and user.user_id else None  # type: ignore
+        
+        if not task_user_id_str or not current_user_id_str or task_user_id_str != current_user_id_str:
+            logger.debug(f"Authorization failed: task_user={task_user_id_str}, current_user={current_user_id_str}")
+            raise HTTPException(status_code=403, detail="Not authorized to delete this task")
+
+        # Cancel running task if it exists
+        if str(task_uuid) in _running_tasks:  # type: ignore
+            background_task = _running_tasks[str(task_uuid)]  # type: ignore
+            if not background_task.done():
+                background_task.cancel()
+            del _running_tasks[str(task_uuid)]  # type: ignore
+
+        # Delete task from database
+        await ResearchService.delete_research_task(db, task_uuid)
+
+        logger.info(f"Deleted research task {task_id} for user {user.user_id}")  # type: ignore
+
+        return {
+            "success": True,
+            "message": "Task deleted successfully",
+            "task_id": task_id,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete research task {task_id}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=f"Failed to delete research task: {str(e)}"
         )
 
 
