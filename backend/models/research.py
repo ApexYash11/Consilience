@@ -5,7 +5,6 @@ from enum import Enum
 from pydantic import BaseModel, Field
 from uuid import UUID, uuid4
 from typing import Optional, Dict, Any, List, Annotated
-from operator import add
 
 
 class ResearchDepth(str, Enum):
@@ -153,7 +152,6 @@ class ResearchState(BaseModel):
     errors: Annotated[List[str], _merge_lists] = Field(default_factory=list)
 
     # Routing decisions (used in conditional edges)
-    revision_needed: bool = False  # Set by Reviewer if major issues found
     synthesis_confidence: float = 1.0  # 0.0-1.0, set by Synthesizer
     source_quality_score: float = 0.0  # 0.0-1.0, set by Verifier
     verifier_rejection_count: int = 0  # Track failed verification attempts

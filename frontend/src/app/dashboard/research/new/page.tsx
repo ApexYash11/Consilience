@@ -31,6 +31,7 @@ export default function NewResearchPage() {
       const token = localStorage.getItem("consilience_access_token");
       if (!token) {
         setError("Not authenticated. Please log in again.");
+        setIsLoading(false);
         router.push("/login");
         return;
       }
@@ -57,7 +58,13 @@ export default function NewResearchPage() {
         );
       }
 
-      const result: { task_id: string } = await response.json();
+      const result = await response.json().catch(() => null);
+
+      // Validate response before navigation
+      if (typeof result?.task_id !== 'string' || result.task_id.trim() === '') {
+        console.error("Invalid response from server:", result);
+        throw new Error("Invalid response from server: missing or invalid task_id");
+      }
 
       // Redirect to status page
       router.push(`/dashboard/research/${result.task_id}`);
@@ -104,10 +111,11 @@ export default function NewResearchPage() {
               <form onSubmit={handleSubmit} className="space-y-6">
                 {/* Topic Input */}
                 <div className="space-y-2">
-                  <label className="block text-sm font-medium text-[var(--text-primary)]">
+                  <label htmlFor="research-topic" className="block text-sm font-medium text-[var(--text-primary)]">
                     Research Topic
                   </label>
                   <Input
+                    id="research-topic"
                     type="text"
                     placeholder="e.g., Climate change impacts on agriculture"
                     value={topic}
@@ -130,6 +138,16 @@ export default function NewResearchPage() {
                     {/* Standard */}
                     <button
                       type="button"
+                      role="radio"
+                      aria-checked={depth === "standard"}
+                      aria-disabled={isLoading}
+                      tabIndex={depth === "standard" ? 0 : -1}
+                      onKeyDown={(e) => {
+                        if ((e.key === 'Enter' || e.key === ' ') && !isLoading) {
+                          e.preventDefault();
+                          setDepth("standard");
+                        }
+                      }}
                       onClick={() => setDepth("standard")}
                       disabled={isLoading}
                       className={cn(
@@ -166,6 +184,16 @@ export default function NewResearchPage() {
                     {/* Deep */}
                     <button
                       type="button"
+                      role="radio"
+                      aria-checked={depth === "deep"}
+                      aria-disabled={isLoading}
+                      tabIndex={depth === "deep" ? 0 : -1}
+                      onKeyDown={(e) => {
+                        if ((e.key === 'Enter' || e.key === ' ') && !isLoading) {
+                          e.preventDefault();
+                          setDepth("deep");
+                        }
+                      }}
                       onClick={() => setDepth("deep")}
                       disabled={isLoading}
                       className={cn(

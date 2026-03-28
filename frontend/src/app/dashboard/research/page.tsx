@@ -31,8 +31,11 @@ export default function ResearchPage() {
       })
 
       if (!response.ok) {
-        const error = await response.json()
-        alert(`Failed to delete task: ${error.detail || "Unknown error"}`)
+        const errorData = await response.json().catch(() => ({
+          detail: "Unknown error occurred",
+        }))
+        const errorMessage = errorData.detail || errorData.message || "Unknown error occurred"
+        alert(`Failed to delete task: ${errorMessage}`)
         return
       }
 

@@ -8,7 +8,7 @@ const POLL_INTERVAL = 2000; // 2 seconds
 interface UseResearchStatusReturn {
   status: ResearchStatus | null;
   progress: number;
-  currentStep: ResearchStatus["current_step"] | null;
+  currentStep: ResearchStatus["currentStep"] | null;
   sources: ResearchStatus["sources"];
   costData: {
     tokens: number;
@@ -147,18 +147,32 @@ export function useResearchStatus(taskId: string | null): UseResearchStatusRetur
 
   useEffect(() => {
     isMountedRef.current = true;
+    const completedRef = { current: false };
 
     // Initial fetch
-    void fetchStatus();
+    void fetchStatus().then(() => {
+      // Check if status is terminal after initial fetch
+      if (status?.status === "completed" || status?.status === "failed") {
+        completedRef.current = true;
+      }
+    });
 
     // Set up polling
     const setupNextPoll = () => {
       if (!isMountedRef.current) return;
+      
+      // Stop polling if task is completed or failed
+      if (completedRef.current) return;
 
       timeoutIdRef.current = setTimeout(() => {
         void fetchStatus().then(() => {
+          // Update terminal state
+          if (status?.status === "completed" || status?.status === "failed") {
+            completedRef.current = true;
+          }
+          
           // Schedule next poll if still polling
-          if (isMountedRef.current && status !== undefined) {
+          if (isMountedRef.current && !completedRef.current) {
             setupNextPoll();
           }
         });
@@ -173,12 +187,12 @@ export function useResearchStatus(taskId: string | null): UseResearchStatusRetur
         clearTimeout(timeoutIdRef.current);
       }
     };
-  }, [fetchStatus, status]);
+  }, [fetchStatus]);
 
   return {
     status,
     progress: Math.max(previousProgressRef.current, status?.progress || 0),
-    currentStep: status?.current_step || null,
+    currentStep: status?.currentStep || null,
     sources: status?.sources || [],
     costData: {
       tokens: status?.tokens || 0,

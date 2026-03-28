@@ -14,6 +14,7 @@ interface CostTrackerProps {
   isCompleted?: boolean;
   isFailed?: boolean;
   onCancel?: () => Promise<void>;
+  isCancelling?: boolean;
 }
 
 export function CostTracker({
@@ -24,6 +25,7 @@ export function CostTracker({
   isCompleted = false,
   isFailed = false,
   onCancel,
+  isCancelling = false,
 }: CostTrackerProps) {
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -144,6 +146,7 @@ export function CostTracker({
                   variant="secondary"
                   size="sm"
                   className="flex-1"
+                  disabled={isCancelling}
                 >
                   Keep Research
                 </Button>
@@ -152,9 +155,9 @@ export function CostTracker({
                   variant="danger"
                   size="sm"
                   className="flex-1"
-                  disabled={isDeleting}
+                  disabled={isCancelling}
                 >
-                  {isDeleting && <Loader className="h-3 w-3 mr-1 animate-spin" />}
+                  {isCancelling && <Loader className="h-3 w-3 mr-1 animate-spin" />}
                   Confirm Cancel
                 </Button>
               </div>

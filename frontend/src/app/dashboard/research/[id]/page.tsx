@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { ArrowLeft, AlertCircle } from "lucide-react";
@@ -23,6 +23,9 @@ export default function ResearchStatusPage() {
 
   // Track if we've already navigated to prevent double nav
   const hasNavigatedRef = useRef(false);
+  
+  // Track cancellation in-flight state
+  const [isCancelling, setIsCancelling] = useState(false);
 
   // Handle navigation to results page after completion
   useEffect(() => {
@@ -41,8 +44,9 @@ export default function ResearchStatusPage() {
   }, [status, taskId, router]);
 
   const handleCancel = async () => {
-    if (!taskId) return;
+    if (!taskId || isCancelling) return;
 
+    setIsCancelling(true);
     try {
       const token = localStorage.getItem("consilience_access_token");
       if (!token) throw new Error("Not authenticated");
@@ -64,6 +68,9 @@ export default function ResearchStatusPage() {
       router.push("/dashboard/research");
     } catch (err) {
       console.error("Failed to cancel research:", err);
+      alert(`Failed to cancel research: ${err instanceof Error ? err.message : "Unknown error"}`);
+    } finally {
+      setIsCancelling(false);
     }
   };
 
@@ -183,6 +190,7 @@ export default function ResearchStatusPage() {
                       isCompleted={isCompleted}
                       isFailed={isFailed}
                       onCancel={!isCompleted && !isFailed ? handleCancel : undefined}
+                      isCancelling={isCancelling}
                     />
                   </Card>
                 </div>
@@ -207,9 +215,12 @@ export default function ResearchStatusPage() {
                   >
                     Try Again
                   </Button>
-                  <a href="mailto:support@consilience.ai">
-                    <Button variant="ghost">Contact Support</Button>
-                  </a>
+                  <Button
+                    onClick={() => window.location.href = "mailto:support@consilience.ai"}
+                    variant="ghost"
+                  >
+                    Contact Support
+                  </Button>
                 </motion.div>
               )}
             </motion.div>

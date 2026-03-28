@@ -87,6 +87,11 @@ export function ProgressCard({
         {/* Progress bar */}
         <div className="w-full h-2 bg-[var(--bg-hover)] rounded-full overflow-hidden">
           <motion.div
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={isCompleted ? 100 : progress}
+            aria-label={`Research progress: ${isCompleted ? 100 : progress}% complete`}
             className={cn(
               "h-full rounded-full transition-colors",
               isFailed ? "bg-red-500" : isCompleted ? "bg-green-500" : "bg-blue-500"

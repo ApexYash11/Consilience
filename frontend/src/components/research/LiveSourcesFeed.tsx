@@ -36,10 +36,10 @@ export function LiveSourcesFeed({ sources = [], maxVisible = 4 }: LiveSourcesFee
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <div className="text-sm font-medium text-[var(--text-secondary)]">Sources Found</div>
-        {sources.length > 0 && (
+        {deduplicatedSources.length > 0 && (
           <div className="text-xs text-[var(--text-tertiary)]">
-            {sources.length} source{sources.length !== 1 ? "s" : ""}
-            {sources.length > maxVisible && ` (showing ${maxVisible})`}
+            {deduplicatedSources.length} source{deduplicatedSources.length !== 1 ? "s" : ""}
+            {deduplicatedSources.length > maxVisible && ` (showing ${maxVisible})`}
           </div>
         )}
       </div>
@@ -85,20 +85,20 @@ export function LiveSourcesFeed({ sources = [], maxVisible = 4 }: LiveSourcesFee
                   <div className="text-xs text-[var(--text-tertiary)] line-clamp-1 mt-1">
                     {source.url}
                   </div>
-                  {source.quality_score !== undefined && (
+                  {source.qualityScore !== undefined && (
                     <div className="mt-1.5 flex items-center gap-1.5">
                       <div className="h-1.5 w-16 bg-[var(--bg-hover)] rounded-full overflow-hidden">
                         <motion.div
                           className="h-full bg-green-500"
                           initial={{ width: 0 }}
                           animate={{
-                            width: `${Math.min(100, Math.round(source.quality_score * 100))}%`,
+                            width: `${Math.max(0, Math.min(100, Math.round(source.qualityScore * 100)))}%`,
                           }}
                           transition={{ duration: 0.6, ease: "easeOut" }}
                         />
                       </div>
                       <span className="text-xs text-[var(--text-tertiary)]">
-                        {Math.round(source.quality_score * 100)}%
+                        {Math.max(0, Math.min(100, Math.round(source.qualityScore * 100)))}%
                       </span>
                     </div>
                   )}

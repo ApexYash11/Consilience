@@ -796,10 +796,6 @@ async def get_deep_research_result(
         if not task:
             raise HTTPException(status_code=404, detail="Task not found")
 
-        # Verify user owns task
-        if not task:
-            raise HTTPException(status_code=404, detail="Task not found")
-
         # Verify user owns task - handle both UUID and string types
         task_user_id_str = str(task.user_id) if task.user_id else None
         current_user_id_str = str(user.user_id) if hasattr(user, 'user_id') and user.user_id else None  # type: ignore
@@ -888,7 +884,19 @@ async def delete_research_task(
             background_task = _running_tasks[str(task_uuid)]  # type: ignore
             if not background_task.done():
                 background_task.cancel()
-            del _running_tasks[str(task_uuid)]  # type: ignore
+            
+            # Wait for task cancellation with timeout to prevent hanging
+            try:
+                await asyncio.wait_for(background_task, timeout=5.0)
+            except asyncio.CancelledError:
+                logger.info(f"Background task {task_uuid} cancelled successfully")
+            except asyncio.TimeoutError:
+                logger.warning(f"Background task {task_uuid} did not complete within timeout, proceeding with deletion")
+            except Exception as e:
+                logger.error(f"Error waiting for task {task_uuid} cancellation: {str(e)}")
+            finally:
+                # Always remove from running tasks after attempting cancellation
+                del _running_tasks[str(task_uuid)]  # type: ignore
 
         # Delete task from database
         await ResearchService.delete_research_task(db, task_uuid)

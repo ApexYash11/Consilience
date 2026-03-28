@@ -84,7 +84,8 @@ async def researcher_node(
 
             # Parse sources from response
             found_sources = parse_sources_from_response(response, researcher_index)
-            current_sources = (state.sources or []) if hasattr(state, "sources") else []
+            # Make a shallow copy to avoid mutating state.sources
+            current_sources = list(state.sources or []) if hasattr(state, "sources") else []
             if found_sources:
                 current_sources.extend(found_sources)
 
@@ -121,14 +122,16 @@ async def researcher_node(
 
     except asyncio.TimeoutError:
         logger.warning(f"{researcher_id} timed out after 180 seconds")
-        errors = (state.errors or []) if hasattr(state, "errors") else []
-        errors.append(f"{researcher_id}: Timeout")
-        return {"errors": errors}
+        # Create a new list to avoid mutating state.errors
+        existing_errors = (state.errors or []) if hasattr(state, "errors") else []
+        new_errors = list(existing_errors) + [f"{researcher_id}: Timeout"]
+        return {"errors": new_errors}
     except Exception as e:
         logger.error(f"{researcher_id} failed: {str(e)}")
-        errors = (state.errors or []) if hasattr(state, "errors") else []
-        errors.append(f"{researcher_id}: {str(e)}")
-        return {"errors": errors}
+        # Create a new list to avoid mutating state.errors
+        existing_errors = (state.errors or []) if hasattr(state, "errors") else []
+        new_errors = list(existing_errors) + [f"{researcher_id}: {str(e)}"]
+        return {"errors": new_errors}
 
 
 async def search_sources(query: str, researcher_id: int) -> Tuple[List[Source], Dict]:

@@ -75,9 +75,8 @@ export function mapStepToAgents(step: ResearchStep): Record<string, AgentState> 
       break;
 
     default:
-      // Type guard - should never reach here
-      const _exhaustive: never = step;
-      return _exhaustive;
+      // Runtime error for unknown steps - fail fast
+      throw new Error(`Unknown research step: "${step}". Expected one of: queued, planning, researching, verifying, detecting, synthesizing, reviewing, formatting, completed, failed`);
   }
 
   return states;

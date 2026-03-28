@@ -77,7 +77,7 @@ export function AgentPipeline({ currentStep, isLoading = false }: AgentPipelineP
                 initial={{ opacity: 0, x: -4 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -4 }}
-                transition={{ duration: animationConfig.duration / 1000 }}
+                transition={{ duration: animationConfig.duration }}
               >
                 <div className={cn(
                   "p-3 rounded-lg border flex items-center gap-3 transition-all",

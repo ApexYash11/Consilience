@@ -210,7 +210,6 @@ class ResearchService:
             True if task was deleted, False if not found
         """
         from sqlalchemy import delete
-        from ..database.models import ResearchTaskDB, ResearchCheckpointDB, AgentActionLogDB
         
         # First delete associated records
         await session.execute(

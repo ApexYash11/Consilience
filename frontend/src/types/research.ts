@@ -16,13 +16,13 @@ export interface Source {
   id?: string;
   url: string;
   title: string;
-  quality_score?: number;
+  qualityScore?: number;
 }
 
 export interface ResearchStatus {
   id: string;
   progress: number;
-  current_step: ResearchStep;
+  currentStep: ResearchStep;
   sources?: Source[];
   tokens?: number;
   costPerToken?: number;

@@ -129,7 +129,6 @@ DEEPSEEK_V3_MODELS: Dict[str, str] = {
 
 PRICING: Dict[str, Dict[Literal["input", "output"], float]] = {
     # Premium free models (March 2026) - $0/M input and output tokens
-    "minimax/minimax-m2.5:free": {"input": 0.0, "output": 0.0},
     "stepfun/step-3.5-flash:free": {"input": 0.0, "output": 0.0},
     "qwen/qwen3-next-80b-a3b-instruct:free": {"input": 0.0, "output": 0.0},
     "nvidia/nemotron-3-super-120b-a12b:free": {"input": 0.0, "output": 0.0},
@@ -293,6 +292,24 @@ MODEL_CAPABILITIES: Dict[str, Dict[str, bool]] = {
         "vision": False,
         "long_context": True,  # 131K tokens
     },
+    "nvidia/nemotron-3-super-120b-a12b:free": {
+        "reasoning": True,
+        "tool_calling": True,
+        "vision": False,
+        "long_context": True,  # 1M tokens
+    },
+    "stepfun/step-3.5-flash:free": {
+        "reasoning": False,
+        "tool_calling": True,
+        "vision": False,
+        "long_context": False,  # ~100K tokens (optimized for speed)
+    },
+    "qwen/qwen3-next-80b-a3b-instruct:free": {
+        "reasoning": True,
+        "tool_calling": True,
+        "vision": False,
+        "long_context": True,  # 262K tokens
+    },
     "moonshotai/kimi-k2.5": {
         "reasoning": True,
         "tool_calling": True,
@@ -355,6 +372,27 @@ MODEL_DESCRIPTIONS = {
         "context": "131K",
         "use_cases": ["Formatting"],
         "why": "Specialized for structured output; perfect for citations",
+    },
+    "nvidia/nemotron-3-super-120b-a12b:free": {
+        "name": "NVIDIA Nemotron 3 Super 120B",
+        "size": "120B (MoE)",
+        "context": "1M",
+        "use_cases": ["Planning", "Research", "Verification", "Synthesis", "Review", "Revision"],
+        "why": "Large context for long documents; hybrid MoE (120B activated); tested accessible",
+    },
+    "stepfun/step-3.5-flash:free": {
+        "name": "StepFun Step 3.5 Flash",
+        "size": "~30B (estimated)",
+        "context": "~100K",
+        "use_cases": ["Detection", "Formatting"],
+        "why": "Speed-optimized for quick inference; tested accessible",
+    },
+    "qwen/qwen3-next-80b-a3b-instruct:free": {
+        "name": "Qwen3 Next 80B",
+        "size": "80B",
+        "context": "262K",
+        "use_cases": ["Research", "Synthesis"],
+        "why": "Strong multilingual; large context; good fallback",
     },
     "moonshotai/kimi-k2.5": {
         "name": "Kimi K2.5",
