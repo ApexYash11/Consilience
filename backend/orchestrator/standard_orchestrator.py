@@ -20,6 +20,9 @@ logger = logging.getLogger(__name__)
 # Global callback for agent action logging
 _agent_action_logger: Optional[Callable] = None
 
+# Global callback for metadata persistence during research execution
+_metadata_persistence_callback: Optional[Callable] = None
+
 
 def set_agent_action_logger(logger_func: Callable):
     """
@@ -65,6 +68,45 @@ async def _log_agent_action(
             )
         except Exception as e:
             logger.warning(f"Failed to log agent action {agent_name}: {e}")
+
+
+def set_metadata_persistence_callback(callback_func: Callable):
+    """
+    Set the global metadata persistence callback for live progress tracking.
+    
+    The callback should accept:
+    - task_id: UUID
+    - current_step: str (name of current research phase)
+    - sources: List[dict] (sources found so far)
+    - tokens_used: int
+    - cost: float
+    - model: str (LLM model being used)
+    """
+    global _metadata_persistence_callback
+    _metadata_persistence_callback = callback_func
+
+
+async def _persist_metadata(
+    task_id: UUID,
+    current_step: str,
+    sources: list,
+    tokens_used: int = 0,
+    cost: float = 0.0,
+    model: str = "claude-3-opus",
+):
+    """Persist metadata update via the registered callback."""
+    if _metadata_persistence_callback:
+        try:
+            await _metadata_persistence_callback(
+                task_id=task_id,
+                current_step=current_step,
+                sources=sources,
+                tokens_used=tokens_used,
+                cost=cost,
+                model=model,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to persist metadata for task {task_id}: {e}")
 
 
 def create_research_graph():
@@ -361,6 +403,12 @@ async def run_research(initial_state: ResearchState) -> ResearchState:
             }
         }
         
+        # Convert task_id string back to UUID for callback
+        try:
+            task_uuid = UUID(initial_state.task_id) if isinstance(initial_state.task_id, str) else initial_state.task_id
+        except (ValueError, TypeError):
+            task_uuid = initial_state.task_id  # type: ignore
+        
         # Invoke compiled graph with enhanced config
         final_state_dict = await _research_graph.ainvoke(
             initial_state,
@@ -369,6 +417,61 @@ async def run_research(initial_state: ResearchState) -> ResearchState:
         
         # Convert dict back to ResearchState Pydantic model
         final_state = ResearchState(**final_state_dict) if isinstance(final_state_dict, dict) else final_state_dict
+        
+        # Persist metadata at key execution points
+        # After researchers complete (we have sources)
+        if final_state.sources:
+            await _persist_metadata(
+                task_id=task_uuid,
+                current_step="researching",
+                sources=[{
+                    "id": s.id,
+                    "title": s.title,
+                    "authors": s.authors,
+                    "publication": s.publication,
+                    "year": s.year,
+                    "url": s.url,
+                    "credibility": s.credibility,
+                } for s in final_state.sources],
+                tokens_used=final_state.tokens_used or 0,
+                cost=final_state.cost or 0.0,
+            )
+        
+        # After detection/verification phase
+        if final_state.verified_sources or final_state.contradictions:
+            await _persist_metadata(
+                task_id=task_uuid,
+                current_step="verifying",
+                sources=[{
+                    "id": s.id,
+                    "title": s.title,
+                    "authors": s.authors,
+                    "publication": s.publication,
+                    "year": s.year,
+                    "url": s.url,
+                    "credibility": s.credibility,
+                } for s in (final_state.verified_sources or [])],
+                tokens_used=final_state.tokens_used or 0,
+                cost=final_state.cost or 0.0,
+            )
+        
+        # After synthesis phase
+        if final_state.draft_paper:
+            await _persist_metadata(
+                task_id=task_uuid,
+                current_step="synthesizing",
+                sources=[{
+                    "id": s.id,
+                    "title": s.title,
+                    "authors": s.authors,
+                    "publication": s.publication,
+                    "year": s.year,
+                    "url": s.url,
+                    "credibility": s.credibility,
+                } for s in final_state.sources],
+                tokens_used=final_state.tokens_used or 0,
+                cost=final_state.cost or 0.0,
+            )
         
         # Post-execution metrics
         final_state.execution_metrics = {
@@ -393,4 +496,3 @@ async def run_research(initial_state: ResearchState) -> ResearchState:
         initial_state.status = TaskStatus.FAILED
         initial_state.end_time = datetime.utcnow()
         raise
-        pass

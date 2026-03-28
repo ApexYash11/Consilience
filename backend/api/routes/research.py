@@ -14,10 +14,11 @@ from ..dependencies import get_db, get_current_user, require_paid_tier, check_st
 from ...models.research import ResearchState, ResearchDepth, TaskStatus
 from ...services.research_service import ResearchService
 from ...services.observability import safe_trace_async, safe_get_current_run_id, merge_metadata, log_metric
-from ...orchestrator.standard_orchestrator import run_research, set_agent_action_logger
+from ...orchestrator.standard_orchestrator import run_research, set_agent_action_logger, set_metadata_persistence_callback
 from ...orchestrator.deep_orchestrator import (
     run_deep_research,
     set_agent_action_logger as set_deep_agent_action_logger,
+    set_metadata_persistence_callback as set_deep_metadata_persistence_callback,
 )
 from ...database.connection import AsyncSessionLocal
 from ...services.deep_cost_estimator import estimate_deep_research_cost
@@ -41,11 +42,16 @@ class CreateResearchResponse(BaseModel):
 
 
 class ResearchStatusResponse(BaseModel):
-    task_id: str
-    status: str
-    progress_percent: int
-    cost_so_far: float
-    tokens_used: int
+    id: str  # Changed from task_id to match frontend
+    status: str  # "queued", "running", "completed", "failed"
+    progress: int  # Changed from progress_percent (0-100)
+    currentStep: Optional[str] = None  # Current research step
+    sources: list = []  # Sources discovered so far
+    tokens: int  # Renamed from tokens_used
+    costPerToken: float = 0.000006  # Cost per token
+    estimatedRemaining: Optional[int] = None  # Estimated time remaining in seconds
+    model: str = "claude-3-opus"  # Model being used
+    error: Optional[str] = None  # Error message if failed
 
 
 class ResearchResultResponse(BaseModel):
@@ -121,6 +127,41 @@ async def _log_agent_action_to_db(
         logger.warning(f"Failed to log agent action {agent_name}: {e}")
 
 
+async def _persist_metadata_to_db(
+    task_id: UUID,
+    current_step: str,
+    sources: list,
+    tokens_used: int = 0,
+    cost: float = 0.0,
+    model: str = "claude-3-opus",
+):
+    """
+    Callback for persisting research metadata updates during execution.
+    This enables live progress updates during research execution.
+    """
+    try:
+        # Get a fresh database session for this async operation
+        async with AsyncSessionLocal() as session:
+            # Build metadata dict with current execution state
+            metadata = {
+                "current_step": current_step,
+                "sources": sources,
+                "model": model,
+                "cost_per_token": 0.000006,  # Default cost per token for Claude
+            }
+            
+            # Update task with current progress
+            await ResearchService.update_research_task(
+                session=session,
+                task_id=task_id,
+                tokens_used=tokens_used,
+                actual_cost_usd=cost,
+                metadata_json=metadata,
+            )
+    except Exception as e:
+        logger.warning(f"Failed to persist metadata for task {task_id}: {e}")
+
+
 async def _execute_research_background(
     task_id: UUID,
     state: ResearchState,
@@ -136,8 +177,9 @@ async def _execute_research_background(
     - Enables state snapshots for debugging
     """
     try:
-        # Set the agent logging callback for this execution
+        # Set the agent logging and metadata callbacks for this execution
         set_agent_action_logger(_log_agent_action_to_db)
+        set_metadata_persistence_callback(_persist_metadata_to_db)
 
         # Update task status to running
         await ResearchService.update_research_task(
@@ -474,27 +516,75 @@ async def get_research_status(
             logger.debug(f"Authorization failed: task_user={task_user_id_str}, current_user={current_user_id_str}")
             raise HTTPException(status_code=403, detail="Not authorized to access this task")
 
-        # Estimate progress based on status
-        progress_map = {
-            TaskStatus.PENDING: 0,
-            TaskStatus.RUNNING: 50,
-            TaskStatus.COMPLETED: 100,
-            TaskStatus.FAILED: 0,
-        }
-        
         # Handle both enum and string status types
         task_status = task.status  # type: ignore
         if isinstance(task_status, str):
             task_status = TaskStatus(task_status)
         
-        progress = progress_map.get(task_status, 0)
+        # Extract metadata
+        metadata = task.metadata_json or {}  # type: ignore
+        if not isinstance(metadata, dict):
+            metadata = {}
+        
+        # Extract sources and calculate progress
+        sources = metadata.get("sources", [])
+        num_sources = len(sources) if isinstance(sources, list) else 0
+        
+        # Calculate progress based on status and sources found
+        if task_status == TaskStatus.RUNNING:
+            # Base progress: 25% for just starting research
+            base_progress = 25
+            # Bonus: up to 40% based on sources found (estimate max of 100 sources)
+            source_bonus = min(40, (num_sources / 100) * 40)
+            # Bonus: up to 35% based on elapsed time
+            if task.started_at:
+                elapsed_seconds = (datetime.utcnow() - task.started_at).total_seconds()
+                # Estimate 15 minutes total, so at full time we'd have 35% from time
+                time_bonus = min(35, (elapsed_seconds / 900) * 35)
+            else:
+                time_bonus = 0
+            progress = min(95, int(base_progress + source_bonus + time_bonus))
+        else:
+            # Use static mapping for non-running states
+            progress_map = {
+                TaskStatus.PENDING: 0,
+                TaskStatus.COMPLETED: 100,
+                TaskStatus.FAILED: 0,
+                TaskStatus.CANCELLED: 0,
+                TaskStatus.PAUSED: 50,
+            }
+            progress = progress_map.get(task_status, 0)
+        
+        # Extract current step from metadata
+        current_step = metadata.get("current_step")
+        
+        # Extract model and cost info from metadata
+        model = metadata.get("model", "claude-3-opus")
+        cost_per_token = metadata.get("cost_per_token", 0.000006)
+        
+        # Calculate estimated remaining time (simple heuristic)
+        estimated_remaining = None
+        if task_status == TaskStatus.RUNNING and progress > 0 and progress < 100:
+            if task.started_at:
+                elapsed_seconds = (datetime.utcnow() - task.started_at).total_seconds()
+                # Linear estimate: if we're at X% progress after Y seconds, 
+                # we should finish in (Y * 100 / X) - Y seconds
+                estimated_remaining = max(0, int((elapsed_seconds * 100 / progress) - elapsed_seconds))
+        
+        # Extract error if task failed
+        error = task.error_message if task.status == TaskStatus.FAILED else None  # type: ignore
 
         return ResearchStatusResponse(
-            task_id=str(task.id),
+            id=str(task.id),
             status=task_status.value if isinstance(task_status, TaskStatus) else str(task_status),
-            progress_percent=progress,
-            cost_so_far=float(task.actual_cost_usd or 0.0),  # type: ignore
-            tokens_used=task.tokens_used or 0,  # type: ignore
+            progress=progress,
+            currentStep=current_step,
+            sources=sources,
+            tokens=task.tokens_used or 0,  # type: ignore
+            costPerToken=cost_per_token,
+            estimatedRemaining=estimated_remaining,
+            model=model,
+            error=error,
         )
 
     except HTTPException:
@@ -739,12 +829,20 @@ async def get_deep_research_status(
         
         progress = progress_map.get(task_status, 0)
 
+        # Extract sources and current step from metadata for deep research
+        metadata = task.metadata_json or {}  # type: ignore
+        
         return ResearchStatusResponse(
-            task_id=str(task.id),
+            id=str(task.id),
             status=task_status.value if isinstance(task_status, TaskStatus) else str(task_status),
-            progress_percent=progress,
-            cost_so_far=float(task.actual_cost_usd or 0.0),  # type: ignore
-            tokens_used=task.tokens_used or 0,  # type: ignore
+            progress=progress,
+            currentStep=metadata.get("current_step") if isinstance(metadata, dict) else None,
+            sources=metadata.get("sources", []) if isinstance(metadata, dict) else [],
+            tokens=task.tokens_used or 0,  # type: ignore
+            costPerToken=0.000006,
+            estimatedRemaining=None,
+            model="claude-3-opus",
+            error=task.error_message if task.status == TaskStatus.FAILED else None,  # type: ignore
         )
 
     except HTTPException:

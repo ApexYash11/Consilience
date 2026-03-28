@@ -31,11 +31,20 @@ logger = logging.getLogger(__name__)
 # Global callback for agent action logging
 _agent_action_logger: Optional[Callable] = None
 
+# Global callback for metadata persistence during research execution
+_metadata_persistence_callback: Optional[Callable] = None
+
 
 def set_agent_action_logger(logger_func: Callable):
     """Set the global agent action logging callback."""
     global _agent_action_logger
     _agent_action_logger = logger_func
+
+
+def set_metadata_persistence_callback(callback_func: Callable):
+    """Set the global metadata persistence callback for live progress tracking."""
+    global _metadata_persistence_callback
+    _metadata_persistence_callback = callback_func
 
 
 async def _log_agent_action(
@@ -64,6 +73,29 @@ async def _log_agent_action(
             )
         except Exception as e:
             logger.warning(f"Failed to log agent action {agent_name}: {e}")
+
+
+async def _persist_metadata(
+    task_id: UUID,
+    current_step: str,
+    sources: list,
+    tokens_used: int = 0,
+    cost: float = 0.0,
+    model: str = "claude-3-opus",
+):
+    """Persist metadata update via the registered callback."""
+    if _metadata_persistence_callback:
+        try:
+            await _metadata_persistence_callback(
+                task_id=task_id,
+                current_step=current_step,
+                sources=sources,
+                tokens_used=tokens_used,
+                cost=cost,
+                model=model,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to persist metadata for task {task_id}: {e}")
 
 
 # Node wrapper coroutines (required by LangGraph)
@@ -282,6 +314,12 @@ async def run_deep_research(initial_state: ResearchState) -> ResearchState:
         # Create the graph
         graph = create_deep_research_graph()
         
+        # Convert task_id string back to UUID for callback
+        try:
+            task_uuid = UUID(initial_state.task_id) if isinstance(initial_state.task_id, str) else initial_state.task_id
+        except (ValueError, TypeError):
+            task_uuid = initial_state.task_id  # type: ignore
+        
         # Prepare LangSmith config with metadata for observability
         config: Dict[str, Any] = {
             "run_name": f"deep_research_{initial_state.task_id}",
@@ -298,6 +336,42 @@ async def run_deep_research(initial_state: ResearchState) -> ResearchState:
         
         # Execute the workflow with enhanced config
         final_state = cast(ResearchState, await graph.ainvoke(initial_state, config=config))  # type: ignore
+        
+        # Persist metadata at key execution points
+        if final_state.sources:
+            await _persist_metadata(
+                task_id=task_uuid,
+                current_step="researching",
+                sources=[{
+                    "id": s.id,
+                    "title": s.title,
+                    "authors": s.authors,
+                    "publication": s.publication,
+                    "year": s.year,
+                    "url": s.url,
+                    "credibility": s.credibility,
+                } for s in final_state.sources],
+                tokens_used=final_state.tokens_used or 0,
+                cost=final_state.cost or 0.0,
+            )
+        
+        # After detection/verification phase
+        if final_state.verified_sources or final_state.contradictions:
+            await _persist_metadata(
+                task_id=task_uuid,
+                current_step="verifying",
+                sources=[{
+                    "id": s.id,
+                    "title": s.title,
+                    "authors": s.authors,
+                    "publication": s.publication,
+                    "year": s.year,
+                    "url": s.url,
+                    "credibility": s.credibility,
+                } for s in (final_state.verified_sources or [])],
+                tokens_used=final_state.tokens_used or 0,
+                cost=final_state.cost or 0.0,
+            )
         
         logger.info(
             f"Deep research workflow completed for task {initial_state.task_id}: "
