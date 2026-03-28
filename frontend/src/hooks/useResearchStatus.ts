@@ -65,7 +65,7 @@ export function useResearchStatus(taskId: string | null): UseResearchStatusRetur
         return null;
       }
 
-      const apiUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+      const apiUrl = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
       const response = await fetch(
         `${apiUrl}/api/research/standard/${taskId}/status`,
         {

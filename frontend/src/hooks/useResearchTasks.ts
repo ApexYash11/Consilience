@@ -49,7 +49,7 @@ export function useResearchTasks(page: number = 1, pageSize: number = 10) {
       });
 
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000"}/api/research/list?${params}`,
+        `${process.env.NEXT_PUBLIC_API_BASE_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/research/list?${params}`,
         {
           method: "GET",
           headers: {

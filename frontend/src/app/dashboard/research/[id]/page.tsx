@@ -13,6 +13,30 @@ import { AgentPipeline } from "@/components/research/AgentPipeline";
 import { LiveSourcesFeed } from "@/components/research/LiveSourcesFeed";
 import { CostTracker } from "@/components/research/CostTracker";
 
+// Custom error class for authentication failures
+class AuthenticationError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = "AuthenticationError"
+  }
+}
+
+// Helper to get safe API URL
+function getApiUrl(): string {
+  const envUrl = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.NEXT_PUBLIC_API_URL
+  if (envUrl) {
+    return envUrl
+  }
+  
+  // In production, throw error if env var is missing
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("NEXT_PUBLIC_API_BASE_URL environment variable is not configured")
+  }
+  
+  // In development, fall back to localhost
+  return "http://localhost:8000"
+}
+
 export default function ResearchStatusPage() {
   const router = useRouter();
   const params = useParams();
@@ -49,9 +73,11 @@ export default function ResearchStatusPage() {
     setIsCancelling(true);
     try {
       const token = localStorage.getItem("consilience_access_token");
-      if (!token) throw new Error("Not authenticated");
+      if (!token) {
+        throw new AuthenticationError("Authentication token not found");
+      }
 
-      const apiUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+      const apiUrl = getApiUrl();
       const response = await fetch(`${apiUrl}/api/research/${taskId}`, {
         method: "DELETE",
         headers: {
@@ -68,6 +94,20 @@ export default function ResearchStatusPage() {
       router.push("/dashboard/research");
     } catch (err) {
       console.error("Failed to cancel research:", err);
+      
+      // Handle authentication errors with redirect
+      if (err instanceof AuthenticationError) {
+        alert("Your session has expired. Please sign in again.");
+        router.push("/login");
+        return;
+      }
+      
+      // Handle configuration errors
+      if (err instanceof Error && err.message.includes("NEXT_PUBLIC_API_BASE_URL")) {
+        alert("API configuration error. Please contact support.");
+        return;
+      }
+      
       alert(`Failed to cancel research: ${err instanceof Error ? err.message : "Unknown error"}`);
     } finally {
       setIsCancelling(false);
