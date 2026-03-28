@@ -51,8 +51,8 @@ export default function ResearchStatusPage() {
       const token = localStorage.getItem("consilience_access_token");
       if (!token) throw new Error("Not authenticated");
 
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-      const response = await fetch(`${apiUrl}/api/research/standard/${taskId}`, {
+      const apiUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+      const response = await fetch(`${apiUrl}/api/research/${taskId}`, {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${token}`,

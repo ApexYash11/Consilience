@@ -36,7 +36,7 @@ export default function NewResearchPage() {
         return;
       }
 
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const apiUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
       const endpoint = depth === "deep" ? "/api/research/deep" : "/api/research/standard";
 
       const response = await fetch(`${apiUrl}${endpoint}`, {

@@ -23,9 +23,14 @@ export default function ResearchPage() {
 
     setDeletingId(taskId)
     try {
-      const response = await fetch(`/api/research/${taskId}`, {
+      const token = localStorage.getItem("consilience_access_token")
+      if (!token) throw new Error("Not authenticated")
+
+      const apiUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000"
+      const response = await fetch(`${apiUrl}/api/research/${taskId}`, {
         method: "DELETE",
         headers: {
+          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
       })
