@@ -57,7 +57,8 @@ async def researcher_node(
             # Get the query for this researcher
             if researcher_index >= len(state.research_queries):
                 logger.warning(f"{researcher_id}: No query assigned")
-                return state
+                # Return empty update to avoid concurrent write conflicts
+                return {"sources": [], "tokens_used": 0, "cost": 0.0, "errors": []}
 
             query = state.research_queries[researcher_index]
 
@@ -83,14 +84,14 @@ async def researcher_node(
 
             # Parse sources from response
             found_sources = parse_sources_from_response(response, researcher_index)
+            # Make a shallow copy to avoid mutating state.sources
+            current_sources = list(state.sources or []) if hasattr(state, "sources") else []
             if found_sources:
-                if not hasattr(state, "sources") or state.sources is None:
-                    state.sources = []
-                state.sources.extend(found_sources)
+                current_sources.extend(found_sources)
 
             # Track execution
-            state.tokens_used = (state.tokens_used or 0) + tokens["total_tokens"]
-            state.cost = (state.cost or 0.0) + cost_info["cost"]
+            tokens_used = (state.tokens_used or 0) + tokens["total_tokens"]
+            cost = (state.cost or 0.0) + cost_info["cost"]
 
             # Log to DB
             async with AsyncSessionLocal() as session:
@@ -111,20 +112,26 @@ async def researcher_node(
                     duration_seconds=time.time() - start_time,
                 )
 
-            return state
+            # Return only the fields this agent updates (allows concurrent merging in LangGraph)
+            return {
+                "sources": current_sources,
+                "tokens_used": tokens_used,
+                "cost": cost,
+                "errors": state.errors or [],
+            }
 
     except asyncio.TimeoutError:
         logger.warning(f"{researcher_id} timed out after 180 seconds")
-        if not hasattr(state, "errors") or state.errors is None:
-            state.errors = []
-        state.errors.append(f"{researcher_id}: Timeout")
-        return state
+        # Create a new list to avoid mutating state.errors
+        existing_errors = (state.errors or []) if hasattr(state, "errors") else []
+        new_errors = list(existing_errors) + [f"{researcher_id}: Timeout"]
+        return {"errors": new_errors}
     except Exception as e:
         logger.error(f"{researcher_id} failed: {str(e)}")
-        if not hasattr(state, "errors") or state.errors is None:
-            state.errors = []
-        state.errors.append(f"{researcher_id}: {str(e)}")
-        return state
+        # Create a new list to avoid mutating state.errors
+        existing_errors = (state.errors or []) if hasattr(state, "errors") else []
+        new_errors = list(existing_errors) + [f"{researcher_id}: {str(e)}"]
+        return {"errors": new_errors}
 
 
 async def search_sources(query: str, researcher_id: int) -> Tuple[List[Source], Dict]:

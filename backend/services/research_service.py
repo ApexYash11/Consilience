@@ -86,6 +86,54 @@ class ResearchService:
         return result.scalar_one_or_none()
 
     @staticmethod
+    async def get_user_research_tasks(
+        session: AsyncSession,
+        user_id: UUID,
+        page: int = 1,
+        page_size: int = 10,
+    ) -> tuple[list[ResearchTaskDB], int]:
+        """
+        Retrieve paginated research tasks for a user, ordered by created_at descending.
+
+        Args:
+            session: AsyncSession for database operations
+            user_id: UUID of the user
+            page: Page number (1-indexed)
+            page_size: Number of tasks per page
+
+        Returns:
+            Tuple of (task list, total count)
+        """
+        from sqlalchemy import select, func, desc
+
+        # Validate pagination parameters
+        if page < 1:
+            raise ValueError("page must be >= 1")
+        if page_size < 1:
+            raise ValueError("page_size must be >= 1")
+
+        # Get total count
+        count_result = await session.execute(
+            select(func.count(ResearchTaskDB.id)).where(
+                ResearchTaskDB.user_id == user_id
+            )
+        )
+        total_count = count_result.scalar() or 0
+
+        # Get paginated results
+        offset = (page - 1) * page_size
+        result = await session.execute(
+            select(ResearchTaskDB)
+            .where(ResearchTaskDB.user_id == user_id)
+            .order_by(desc(ResearchTaskDB.created_at))
+            .offset(offset)
+            .limit(page_size)
+        )
+        tasks = list(result.scalars().all())
+        
+        return tasks, total_count
+
+    @staticmethod
     async def update_research_task(
         session: AsyncSession,
         task_id: UUID,
@@ -145,6 +193,43 @@ class ResearchService:
         await session.commit()
         logger.info(f"Updated research task {task_id} to status {status}")
         return task
+
+    @staticmethod
+    async def delete_research_task(
+        session: AsyncSession,
+        task_id: UUID,
+    ) -> bool:
+        """
+        Delete a research task and all associated records.
+
+        Args:
+            session: AsyncSession for database operations
+            task_id: UUID of the task to delete
+
+        Returns:
+            True if task was deleted, False if not found
+        """
+        from sqlalchemy import delete
+        
+        # First delete associated records
+        await session.execute(
+            delete(ResearchCheckpointDB).where(ResearchCheckpointDB.task_id == task_id)
+        )
+        await session.execute(
+            delete(AgentActionLogDB).where(AgentActionLogDB.task_id == task_id)
+        )
+        
+        # Then delete the task itself
+        result = await session.execute(
+            delete(ResearchTaskDB).where(ResearchTaskDB.id == task_id)
+        )
+        await session.commit()
+        
+        deleted_count = result.rowcount or 0
+        if deleted_count > 0:
+            logger.info(f"Deleted research task {task_id}")
+        
+        return deleted_count > 0
 
     @staticmethod
     async def log_agent_action(
@@ -295,14 +380,18 @@ class ResearchService:
 
         Enables resume if agent fails.
         """
+        # Handle both string and enum types for status fields
+        status_before_value = status_before.value if isinstance(status_before, TaskStatus) else str(status_before)
+        status_after_value = status_after.value if isinstance(status_after, TaskStatus) else str(status_after)
+        
         checkpoint = ResearchCheckpointDB(
             task_id=task_id,
             agent_name=agent_name,
             agent_type=agent_type,
             sequence_number=sequence_number,
-            state_snapshot_json=state_snapshot.model_dump(),
-            status_before=status_before.value,
-            status_after=status_after.value,
+            state_snapshot_json=state_snapshot.model_dump(mode='json', exclude={'created_at', 'updated_at'}),
+            status_before=status_before_value,
+            status_after=status_after_value,
             duration_seconds=duration_seconds,
             is_resumable=error is None,
             error_message=error,

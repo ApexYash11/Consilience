@@ -204,7 +204,7 @@ async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
             await session.close()
 
 
-async def init_async_db():
+async def init_async_db() -> None:
     """Initialize async database and verify connection.
     
     No Alembic - just test the connection.

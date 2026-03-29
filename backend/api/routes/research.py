@@ -58,6 +58,29 @@ class ResearchResultResponse(BaseModel):
     total_tokens: int
 
 
+class ResearchTaskListItem(BaseModel):
+    """Simplified research task for list views."""
+    task_id: str
+    title: str
+    description: str
+    depth: str
+    status: str
+    created_at: datetime
+    completed_at: Optional[datetime] = None
+    estimated_cost_usd: Optional[float] = None
+    actual_cost_usd: Optional[float] = None
+    progress_percent: int = 0
+
+
+class ResearchListResponse(BaseModel):
+    """Paginated list of research tasks."""
+    tasks: list[ResearchTaskListItem]
+    total_count: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
 router = APIRouter(tags=["research"])
 
 # Background task tracking
@@ -237,6 +260,101 @@ async def _execute_research_background(
             del _running_tasks[str(task_id)]  # type: ignore
 
 
+@router.get("/list", response_model=ResearchListResponse, summary="List user's research tasks", description="Retrieve paginated list of all research tasks for the authenticated user.", tags=["research"])
+async def list_research_tasks(
+    page: int = 1,
+    page_size: int = 10,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),  # enforces auth
+) -> ResearchListResponse:
+    """
+    GET /api/research/list
+
+    Retrieves paginated list of research tasks for the authenticated user.
+    
+    Query Parameters:
+    - page: Page number (1-indexed), default 1
+    - page_size: Number of tasks per page, default 10
+
+    Returns:
+    {
+        "tasks": [
+            {
+                "task_id": "550e8400-e29b-41d4-a716-446655440000",
+                "title": "Research: Climate change impacts on agriculture",
+                "description": "Standard research task for climate change impacts on agriculture",
+                "depth": "standard",
+                "status": "completed",
+                "created_at": "2026-03-27T10:30:00Z",
+                "completed_at": "2026-03-27T10:35:00Z",
+                "estimated_cost_usd": 0.0,
+                "actual_cost_usd": 0.0,
+                "progress_percent": 100
+            }
+        ],
+        "total_count": 25,
+        "page": 1,
+        "page_size": 10,
+        "total_pages": 3
+    }
+    """
+    try:
+        # Normalize pagination parameters
+        normalized_page = max(1, page)
+        normalized_page_size = max(1, min(page_size, 100))  # Ensure page_size >= 1 and cap at 100
+        
+        # Fetch paginated research tasks
+        tasks, total_count = await ResearchService.get_user_research_tasks(
+            session=db,
+            user_id=UUID(user.user_id),  # type: ignore
+            page=normalized_page,
+            page_size=normalized_page_size,
+        )
+
+        # Convert to list items
+        task_items = []
+        for task in tasks:
+            # Determine progress based on status
+            progress_percent = 0
+            if task.status == TaskStatus.COMPLETED:
+                progress_percent = 100
+            elif task.status == TaskStatus.RUNNING:
+                progress_percent = 50  # In-progress indicator
+            elif task.status == TaskStatus.FAILED:
+                progress_percent = 0
+            
+            item = ResearchTaskListItem(
+                task_id=str(task.id),
+                title=task.title or "",
+                description=task.description or "",
+                depth=str(task.research_depth),
+                status=str(task.status),
+                created_at=task.created_at,
+                completed_at=task.completed_at,
+                estimated_cost_usd=float(task.estimated_cost_usd) if task.estimated_cost_usd else None,
+                actual_cost_usd=float(task.actual_cost_usd) if task.actual_cost_usd else None,
+                progress_percent=progress_percent,
+            )
+            task_items.append(item)
+
+        # Calculate total pages using normalized page_size
+        total_pages = (total_count + normalized_page_size - 1) // normalized_page_size
+
+        return ResearchListResponse(
+            tasks=task_items,
+            total_count=total_count,
+            page=normalized_page,
+            page_size=normalized_page_size,
+            total_pages=total_pages,
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to list research tasks: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=f"Failed to list research tasks: {str(e)}"
+        )
+
+
 @router.post("/standard", response_model=CreateResearchResponse, summary="Create standard research task", description="Initiates a standard research task that runs in the background. Results are processed asynchronously.", tags=["research"])
 async def create_standard_research(
     request: CreateResearchRequest,
@@ -348,9 +466,13 @@ async def get_research_status(
         if not task:
             raise HTTPException(status_code=404, detail="Task not found")
 
-        # Verify user owns task
-        if task.user_id != UUID(user.user_id):  # type: ignore
-            raise HTTPException(status_code=403, detail="Not authorized")
+        # Verify user owns task - handle both UUID and string types
+        task_user_id_str = str(task.user_id) if task.user_id else None
+        current_user_id_str = str(user.user_id) if hasattr(user, 'user_id') and user.user_id else None  # type: ignore
+        
+        if not task_user_id_str or not current_user_id_str or task_user_id_str != current_user_id_str:
+            logger.debug(f"Authorization failed: task_user={task_user_id_str}, current_user={current_user_id_str}")
+            raise HTTPException(status_code=403, detail="Not authorized to access this task")
 
         # Estimate progress based on status
         progress_map = {
@@ -359,11 +481,17 @@ async def get_research_status(
             TaskStatus.COMPLETED: 100,
             TaskStatus.FAILED: 0,
         }
-        progress = progress_map.get(task.status, 0)  # type: ignore
+        
+        # Handle both enum and string status types
+        task_status = task.status  # type: ignore
+        if isinstance(task_status, str):
+            task_status = TaskStatus(task_status)
+        
+        progress = progress_map.get(task_status, 0)
 
         return ResearchStatusResponse(
             task_id=str(task.id),
-            status=task.status.value,  # type: ignore
+            status=task_status.value if isinstance(task_status, TaskStatus) else str(task_status),
             progress_percent=progress,
             cost_so_far=float(task.actual_cost_usd or 0.0),  # type: ignore
             tokens_used=task.tokens_used or 0,  # type: ignore
@@ -410,15 +538,23 @@ async def get_research_result(
         if not task:
             raise HTTPException(status_code=404, detail="Task not found")
 
-        # Verify user owns task
-        if task.user_id != UUID(user.user_id):  # type: ignore
-            raise HTTPException(status_code=403, detail="Not authorized")
+        # Verify user owns task - handle both UUID and string types
+        task_user_id_str = str(task.user_id) if task.user_id else None
+        current_user_id_str = str(user.user_id) if hasattr(user, 'user_id') and user.user_id else None  # type: ignore
+        
+        if not task_user_id_str or not current_user_id_str or task_user_id_str != current_user_id_str:
+            logger.debug(f"Authorization failed: task_user={task_user_id_str}, current_user={current_user_id_str}")
+            raise HTTPException(status_code=403, detail="Not authorized to access this task")
 
         # Check if task is completed
-        if task.status != TaskStatus.COMPLETED:  # type: ignore
+        task_status = task.status  # type: ignore
+        if isinstance(task_status, str):
+            task_status = TaskStatus(task_status)
+            
+        if task_status != TaskStatus.COMPLETED:
             raise HTTPException(
                 status_code=400,
-                detail=f"Task not completed. Current status: {task.status.value}",  # type: ignore
+                detail=f"Task not completed. Current status: {task_status.value}",
             )
 
         # Extract result data from final_state_json if available, fallback to metadata_json
@@ -426,7 +562,7 @@ async def get_research_result(
 
         return ResearchResultResponse(
             task_id=str(task.id),
-            status=task.status.value,  # type: ignore
+            status=task_status.value if isinstance(task_status, TaskStatus) else str(task_status),
             final_paper=result_data.get("final_paper", ""),  # type: ignore
             sources=result_data.get("sources", []),  # type: ignore
             contradictions=result_data.get("contradictions", []),  # type: ignore
@@ -576,9 +712,13 @@ async def get_deep_research_status(
         if not task:
             raise HTTPException(status_code=404, detail="Task not found")
 
-        # Verify user owns task
-        if task.user_id != UUID(user.user_id):  # type: ignore
-            raise HTTPException(status_code=403, detail="Not authorized")
+        # Verify user owns task - handle both UUID and string types
+        task_user_id_str = str(task.user_id) if task.user_id else None
+        current_user_id_str = str(user.user_id) if hasattr(user, 'user_id') and user.user_id else None  # type: ignore
+        
+        if not task_user_id_str or not current_user_id_str or task_user_id_str != current_user_id_str:
+            logger.debug(f"Authorization failed: task_user={task_user_id_str}, current_user={current_user_id_str}")
+            raise HTTPException(status_code=403, detail="Not authorized to access this task")
 
         # Verify it's a deep research task
         if not (task.metadata_json and task.metadata_json.get("research_depth") == "deep"):  # type: ignore
@@ -591,11 +731,17 @@ async def get_deep_research_status(
             TaskStatus.COMPLETED: 100,
             TaskStatus.FAILED: 0,
         }
-        progress = progress_map.get(task.status, 0)  # type: ignore
+        
+        # Handle both enum and string status types
+        task_status = task.status  # type: ignore
+        if isinstance(task_status, str):
+            task_status = TaskStatus(task_status)
+        
+        progress = progress_map.get(task_status, 0)
 
         return ResearchStatusResponse(
             task_id=str(task.id),
-            status=task.status.value,  # type: ignore
+            status=task_status.value if isinstance(task_status, TaskStatus) else str(task_status),
             progress_percent=progress,
             cost_so_far=float(task.actual_cost_usd or 0.0),  # type: ignore
             tokens_used=task.tokens_used or 0,  # type: ignore
@@ -650,19 +796,27 @@ async def get_deep_research_result(
         if not task:
             raise HTTPException(status_code=404, detail="Task not found")
 
-        # Verify user owns task
-        if task.user_id != UUID(user.user_id):  # type: ignore
-            raise HTTPException(status_code=403, detail="Not authorized")
+        # Verify user owns task - handle both UUID and string types
+        task_user_id_str = str(task.user_id) if task.user_id else None
+        current_user_id_str = str(user.user_id) if hasattr(user, 'user_id') and user.user_id else None  # type: ignore
+        
+        if not task_user_id_str or not current_user_id_str or task_user_id_str != current_user_id_str:
+            logger.debug(f"Authorization failed: task_user={task_user_id_str}, current_user={current_user_id_str}")
+            raise HTTPException(status_code=403, detail="Not authorized to access this task")
 
         # Verify it's a deep research task
         if not (task.metadata_json and task.metadata_json.get("research_depth") == "deep"):  # type: ignore
             raise HTTPException(status_code=404, detail="Task not found")
 
         # Check if task is completed
-        if task.status != TaskStatus.COMPLETED:  # type: ignore
+        task_status = task.status  # type: ignore
+        if isinstance(task_status, str):
+            task_status = TaskStatus(task_status)
+            
+        if task_status != TaskStatus.COMPLETED:
             raise HTTPException(
                 status_code=400,
-                detail=f"Task not completed. Current status: {task.status.value}",  # type: ignore
+                detail=f"Task not completed. Current status: {task_status.value}",
             )
 
         # Extract result data from final_state_json
@@ -670,7 +824,7 @@ async def get_deep_research_result(
 
         return ResearchResultResponse(
             task_id=str(task.id),
-            status=task.status.value,  # type: ignore
+            status=task_status.value if isinstance(task_status, TaskStatus) else str(task_status),
             final_paper=result_data.get("final_paper", ""),  # type: ignore
             sources=result_data.get("sources", []),  # type: ignore
             contradictions=result_data.get("contradictions", []),  # type: ignore
@@ -684,6 +838,84 @@ async def get_deep_research_result(
         logger.error(f"Failed to get deep research result: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500, detail="Failed to get deep research result"
+        )
+
+
+@router.delete("/{task_id}", summary="Delete research task", description="Delete a research task. Can only delete tasks owned by the current user.", tags=["research"])
+async def delete_research_task(
+    task_id: str,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),  # type: ignore
+) -> dict:
+    """
+    DELETE /api/research/{task_id}
+
+    Deletes a research task owned by the current user.
+    
+    Returns:
+    {
+        "success": true,
+        "message": "Task deleted successfully"
+    }
+    """
+    try:
+        # Validate UUID format
+        try:
+            task_uuid = UUID(task_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid task_id format")
+
+        # Get task from database
+        task = await ResearchService.get_research_task(db, task_uuid)
+
+        if not task:
+            raise HTTPException(status_code=404, detail="Task not found")
+
+        # Verify user owns task - handle both UUID and string types
+        task_user_id_str = str(task.user_id) if task.user_id else None
+        current_user_id_str = str(user.user_id) if hasattr(user, 'user_id') and user.user_id else None  # type: ignore
+        
+        if not task_user_id_str or not current_user_id_str or task_user_id_str != current_user_id_str:
+            logger.debug(f"Authorization failed: task_user={task_user_id_str}, current_user={current_user_id_str}")
+            raise HTTPException(status_code=403, detail="Not authorized to delete this task")
+
+        # Cancel running task if it exists
+        if str(task_uuid) in _running_tasks:  # type: ignore
+            background_task = _running_tasks[str(task_uuid)]  # type: ignore
+            if not background_task.done():
+                background_task.cancel()
+            
+            # Wait for task cancellation with timeout to prevent hanging
+            try:
+                await asyncio.wait_for(background_task, timeout=5.0)
+            except asyncio.CancelledError:
+                logger.info(f"Background task {task_uuid} cancelled successfully")
+            except asyncio.TimeoutError:
+                logger.warning(f"Background task {task_uuid} did not complete within timeout, proceeding with deletion")
+            except Exception as e:
+                logger.error(f"Error waiting for task {task_uuid} cancellation: {str(e)}")
+            finally:
+                # Safely remove from running tasks - use pop with default to avoid KeyError
+                # The background task's finally block may have already removed the entry
+                _running_tasks.pop(str(task_uuid), None)  # type: ignore
+
+        # Delete task from database
+        await ResearchService.delete_research_task(db, task_uuid)
+
+        logger.info(f"Deleted research task {task_id} for user {user.user_id}")  # type: ignore
+
+        return {
+            "success": True,
+            "message": "Task deleted successfully",
+            "task_id": task_id,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete research task {task_id}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=f"Failed to delete research task: {str(e)}"
         )
 
 

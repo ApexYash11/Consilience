@@ -32,30 +32,69 @@ class ModelPhase(str, Enum):
 
 
 STANDARD_MODELS: Dict[str, str] = {
-    # Free models for Standard Research tier - cost $0.00 per paper
-    ModelPhase.PLANNING.value: "deepseek/deepseek-r1-0528:free",
-    # Best for reasoning and planning; matches OpenAI o1 performance
+    # Premium free models for Standard Research tier (March 2026)
+    # Primary models - tested accessible on March 28
     
-    ModelPhase.RESEARCH.value: "qwen/qwen-2.5-7b-instruct:free",
-    # Fast parallel execution; strong multilingual support
+    ModelPhase.PLANNING.value: "nvidia/nemotron-3-super-120b-a12b:free",
+    # Using NVIDIA Nemotron 3 Super - tested accessible, 1M context, hybrid MoE
     
-    ModelPhase.VERIFICATION.value: "deepseek/deepseek-r1-distill-qwen-7b:free",
-    # Strong reasoning for credibility assessment
+    ModelPhase.RESEARCH.value: "nvidia/nemotron-3-super-120b-a12b:free",
+    # Using NVIDIA Nemotron 3 Super - tested accessible, 1M context, hybrid MoE
     
-    ModelPhase.DETECTION.value: "meta-llama/llama-3.3-70b-instruct:free",
-    # Excellent at comparative reasoning for contradiction detection
+    ModelPhase.VERIFICATION.value: "nvidia/nemotron-3-super-120b-a12b:free",
+    # 1M token context, hybrid MoE (120B activated), perfect for cross-checking sources
     
-    ModelPhase.SYNTHESIS.value: "deepseek/deepseek-r1-0528:free",
-    # Best free model for long-form writing
+    ModelPhase.DETECTION.value: "stepfun/step-3.5-flash:free",
+    # Using StepFun Step 3.5 Flash - tested accessible, speed-optimized for detection
     
-    ModelPhase.REVIEW.value: "google/gemma-3-27b:free",
-    # Strong instruction following for peer review and critique
+    ModelPhase.SYNTHESIS.value: "nvidia/nemotron-3-super-120b-a12b:free",
+    # Using NVIDIA Nemotron 3 Super - tested accessible, 1M context, hybrid MoE
     
-    ModelPhase.REVISION.value: "deepseek/deepseek-r1-0528:free",
-    # Good at iterative improvement
+    ModelPhase.REVIEW.value: "nvidia/nemotron-3-super-120b-a12b:free",
+    # 1M context allows reviewing entire papers for methodology criticism and gaps
     
-    ModelPhase.FORMATTING.value: "qwen/qwen-2.5-coder-7b-instruct:free",
-    # Specialized for code/structured output (citations)
+    ModelPhase.REVISION.value: "nvidia/nemotron-3-super-120b-a12b:free",
+    # Using NVIDIA Nemotron 3 Super - tested accessible, 1M context, hybrid MoE
+    
+    ModelPhase.FORMATTING.value: "stepfun/step-3.5-flash:free",
+    # Using StepFun Step 3.5 Flash - tested accessible, speed-optimized for formatting
+}
+
+# Fallback models for Standard Research tier (if primary fails)
+# Try these in order when primary model is unavailable
+STANDARD_MODELS_FALLBACK: Dict[str, list] = {
+    ModelPhase.PLANNING.value: [
+        "qwen/qwen3-next-80b-a3b-instruct:free",
+        "meta-llama/llama-3.3-70b-instruct:free",
+    ],
+    ModelPhase.RESEARCH.value: [
+        "qwen/qwen3-next-80b-a3b-instruct:free",
+        "meta-llama/llama-3.3-70b-instruct:free",
+    ],
+    ModelPhase.VERIFICATION.value: [
+        "qwen/qwen3-next-80b-a3b-instruct:free",
+        "meta-llama/llama-3.3-70b-instruct:free",
+    ],
+    ModelPhase.DETECTION.value: [
+        "qwen/qwen3-next-80b-a3b-instruct:free",
+        "meta-llama/llama-3.3-70b-instruct:free",
+    ],
+    ModelPhase.SYNTHESIS.value: [
+        "qwen/qwen3-next-80b-a3b-instruct:free",
+        "meta-llama/llama-3.3-70b-instruct:free",
+    ],
+    ModelPhase.REVIEW.value: [
+        "qwen/qwen3-next-80b-a3b-instruct:free",
+        "meta-llama/llama-3.3-70b-instruct:free",
+    ],
+    ModelPhase.REVISION.value: [
+        "qwen/qwen3-next-80b-a3b-instruct:free",
+        "meta-llama/llama-3.3-70b-instruct:free",
+    ],
+    ModelPhase.FORMATTING.value: [
+        "qwen/qwen3-next-80b-a3b-instruct:free",
+        "meta-llama/llama-3.3-70b-instruct:free",
+    ],
 }
 
 DEEP_MODELS: Dict[str, str] = {
@@ -89,13 +128,10 @@ DEEPSEEK_V3_MODELS: Dict[str, str] = {
 
 
 PRICING: Dict[str, Dict[Literal["input", "output"], float]] = {
-    # Free models
-    "deepseek/deepseek-r1-0528:free": {"input": 0.0, "output": 0.0},
-    "qwen/qwen-2.5-7b-instruct:free": {"input": 0.0, "output": 0.0},
-    "deepseek/deepseek-r1-distill-qwen-7b:free": {"input": 0.0, "output": 0.0},
-    "meta-llama/llama-3.3-70b-instruct:free": {"input": 0.0, "output": 0.0},
-    "google/gemma-3-27b:free": {"input": 0.0, "output": 0.0},
-    "qwen/qwen-2.5-coder-7b-instruct:free": {"input": 0.0, "output": 0.0},
+    # Premium free models (March 2026) - $0/M input and output tokens
+    "stepfun/step-3.5-flash:free": {"input": 0.0, "output": 0.0},
+    "qwen/qwen3-next-80b-a3b-instruct:free": {"input": 0.0, "output": 0.0},
+    "nvidia/nemotron-3-super-120b-a12b:free": {"input": 0.0, "output": 0.0},
     
     # Paid models
     "moonshotai/kimi-k2.5": {"input": 0.40, "output": 1.75},
@@ -140,6 +176,45 @@ def get_model_for_phase(
             return DEEPSEEK_V3_MODELS[phase_str]
         else:
             return DEEP_MODELS[phase_str]
+    else:
+        raise ValueError(f"Unknown research mode: {mode}")
+
+
+def get_model_and_fallbacks(
+    research_mode: ResearchMode | str,
+    phase: ModelPhase | str,
+) -> tuple[str, list[str]]:
+    """
+    Get the primary model and fallback models for a research phase.
+    
+    Returns fallback models if primary is unavailable or rate-limited.
+    Used for automatic retries with alternative models.
+    
+    Args:
+        research_mode: "standard" or "deep"
+        phase: Research phase (planning, research, verification, etc.)
+        
+    Returns:
+        Tuple of (primary_model, [fallback_models])
+        
+    Example:
+        >>> primary, fallbacks = get_model_and_fallbacks("standard", "planning")
+        >>> primary
+        "nvidia/nemotron-3-super-120b-a12b:free"
+        >>> fallbacks
+        ["qwen/qwen3-next-80b-a3b-instruct:free", "meta-llama/llama-3.3-70b-instruct:free"]
+    """
+    mode = ResearchMode(research_mode) if isinstance(research_mode, str) else research_mode
+    phase_str = phase.value if isinstance(phase, ModelPhase) else phase
+    
+    if mode == ResearchMode.STANDARD:
+        primary = STANDARD_MODELS[phase_str]
+        fallbacks = STANDARD_MODELS_FALLBACK.get(phase_str, [])
+        return primary, fallbacks
+    elif mode == ResearchMode.DEEP:
+        primary = DEEP_MODELS[phase_str]
+        # Deep models don't have fallbacks currently
+        return primary, []
     else:
         raise ValueError(f"Unknown research mode: {mode}")
 
@@ -217,6 +292,24 @@ MODEL_CAPABILITIES: Dict[str, Dict[str, bool]] = {
         "vision": False,
         "long_context": True,  # 131K tokens
     },
+    "nvidia/nemotron-3-super-120b-a12b:free": {
+        "reasoning": True,
+        "tool_calling": True,
+        "vision": False,
+        "long_context": True,  # 1M tokens
+    },
+    "stepfun/step-3.5-flash:free": {
+        "reasoning": False,
+        "tool_calling": True,
+        "vision": False,
+        "long_context": False,  # ~100K tokens (optimized for speed)
+    },
+    "qwen/qwen3-next-80b-a3b-instruct:free": {
+        "reasoning": True,
+        "tool_calling": True,
+        "vision": False,
+        "long_context": True,  # 262K tokens
+    },
     "moonshotai/kimi-k2.5": {
         "reasoning": True,
         "tool_calling": True,
@@ -279,6 +372,27 @@ MODEL_DESCRIPTIONS = {
         "context": "131K",
         "use_cases": ["Formatting"],
         "why": "Specialized for structured output; perfect for citations",
+    },
+    "nvidia/nemotron-3-super-120b-a12b:free": {
+        "name": "NVIDIA Nemotron 3 Super 120B",
+        "size": "120B (MoE)",
+        "context": "1M",
+        "use_cases": ["Planning", "Research", "Verification", "Synthesis", "Review", "Revision"],
+        "why": "Large context for long documents; hybrid MoE (120B activated); tested accessible",
+    },
+    "stepfun/step-3.5-flash:free": {
+        "name": "StepFun Step 3.5 Flash",
+        "size": "~30B (estimated)",
+        "context": "~100K",
+        "use_cases": ["Detection", "Formatting"],
+        "why": "Speed-optimized for quick inference; tested accessible",
+    },
+    "qwen/qwen3-next-80b-a3b-instruct:free": {
+        "name": "Qwen3 Next 80B",
+        "size": "80B",
+        "context": "262K",
+        "use_cases": ["Research", "Synthesis"],
+        "why": "Strong multilingual; large context; good fallback",
     },
     "moonshotai/kimi-k2.5": {
         "name": "Kimi K2.5",

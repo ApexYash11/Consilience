@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from pydantic import BaseModel, Field
 from uuid import UUID, uuid4
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Annotated
 
 
 class ResearchDepth(str, Enum):
@@ -71,10 +71,39 @@ class Contradiction(BaseModel):
     description: str
 
 
+def _merge_lists(existing: List, new_values: List | None) -> List:
+    """Merge lists from concurrent updates - extend existing with new."""
+    if new_values is None:
+        return existing or []
+    if existing is None:
+        return new_values or []
+    # Extend existing list with new values
+    result = (existing or []).copy()
+    result.extend(new_values or [])
+    return result
+
+
+def _sum_floats(existing: float, new_value: float | None) -> float:
+    """Sum floats from concurrent updates."""
+    if new_value is None:
+        return existing or 0.0
+    return (existing or 0.0) + (new_value or 0.0)
+
+
+def _sum_ints(existing: int, new_value: int | None) -> int:
+    """Sum integers from concurrent updates."""
+    if new_value is None:
+        return existing or 0
+    return (existing or 0) + (new_value or 0)
+
+
 class ResearchState(BaseModel):
     """
     The state object that flows through the LangGraph workflow.
     Each node adds/updates fields as it processes the research.
+    
+    Fields with concurrent updates use Annotated with reducer functions
+    to properly merge multiple writes from parallel agents.
     """
 
     # Input
@@ -87,8 +116,8 @@ class ResearchState(BaseModel):
     research_queries: List[str] = Field(default_factory=list)
     research_plan: str = ""
 
-    # Researchers output
-    sources: List[Source] = Field(default_factory=list)
+    # Researchers output - Multiple agents write to this concurrently
+    sources: Annotated[List[Source], _merge_lists] = Field(default_factory=list)
 
     # Verifier output
     verified_sources: List[Source] = Field(default_factory=list)
@@ -110,21 +139,19 @@ class ResearchState(BaseModel):
     # Formatter output
     final_paper: str = ""
 
-    # Metadata
+    # Metadata - Incremented by concurrent agents
     status: TaskStatus = TaskStatus.PENDING
-    cost: float = 0.0
-    tokens_used: int = 0
+    cost: Annotated[float, _sum_floats] = 0.0
+    tokens_used: Annotated[int, _sum_ints] = 0
+
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
-    execution_metrics: Optional[Dict[str, Any]] = (
-        None  # NEW: parallelism, duration, critical_path
-    )
+    execution_metrics: Optional[Dict[str, Any]] = None
 
-    # Error handling
-    errors: List[str] = []  # NEW: per-agent errors (don't fail entire workflow)
+    # Error handling - Multiple agents can add errors concurrently
+    errors: Annotated[List[str], _merge_lists] = Field(default_factory=list)
 
     # Routing decisions (used in conditional edges)
-    revision_needed: bool = False  # Set by Reviewer if major issues found
     synthesis_confidence: float = 1.0  # 0.0-1.0, set by Synthesizer
     source_quality_score: float = 0.0  # 0.0-1.0, set by Verifier
     verifier_rejection_count: int = 0  # Track failed verification attempts
