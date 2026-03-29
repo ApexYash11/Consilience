@@ -109,6 +109,64 @@ async def _persist_metadata(
             logger.warning(f"Failed to persist metadata for task {task_id}: {e}")
 
 
+def _create_node_wrapper_with_persistence(
+    node_func,
+    step_name: str,
+    node_name: str = None,
+):
+    """
+    Wrap a node function to persist metadata after execution.
+    
+    This ensures that frontend sees live updates as each phase completes,
+    instead of waiting for the entire workflow to finish.
+    
+    Args:
+        node_func: The async node function to wrap
+        step_name: Name of the current step (e.g., "planning", "researching")
+        node_name: Optional name for logging (defaults to node_func.__name__)
+    """
+    async def wrapped_node(state: ResearchState) -> ResearchState:
+        # Execute the node
+        result_state = await node_func(state)
+        
+        # Immediately persist metadata so frontend gets live updates
+        try:
+            task_uuid = (
+                result_state.task_id 
+                if isinstance(result_state.task_id, UUID) 
+                else UUID(result_state.task_id)
+            )
+            
+            # Prepare sources list from current state
+            sources_list = []
+            if result_state.sources:
+                sources_list = [{
+                    "id": s.id if hasattr(s, 'id') else str(hash(s)),
+                    "title": s.title if hasattr(s, 'title') else str(s),
+                    "authors": s.authors if hasattr(s, 'authors') else "",
+                    "publication": s.publication if hasattr(s, 'publication') else "",
+                    "year": s.year if hasattr(s, 'year') else 0,
+                    "url": s.url if hasattr(s, 'url') else "",
+                    "credibility": s.credibility if hasattr(s, 'credibility') else 0.0,
+                } for s in result_state.sources]
+            
+            # Persist this phase's progress
+            await _persist_metadata(
+                task_id=task_uuid,
+                current_step=step_name,
+                sources=sources_list,
+                tokens_used=result_state.tokens_used or 0,
+                cost=result_state.cost or 0.0,
+            )
+            logger.info(f"Persisted metadata for step {step_name} (task {result_state.task_id})")
+        except Exception as e:
+            logger.warning(f"Failed to persist metadata for step {step_name}: {e}")
+        
+        return result_state
+    
+    return wrapped_node
+
+
 def create_research_graph():
     """
     Build LangGraph StateGraph with conditional routing.
@@ -150,36 +208,74 @@ def create_research_graph():
     workflow = StateGraph(ResearchState)
     
     # 1. Add all node definitions (async functions that accept and return ResearchState)
-    workflow.add_node("planner", planner_node)
+    # Wrap nodes with persistence callbacks for live progress updates
+    wrapped_planner = _create_node_wrapper_with_persistence(planner_node, "planning")
+    workflow.add_node("planner", wrapped_planner)
     
-    # Helper to wrap researcher_node for specific indices
+    # Helper to wrap researcher_node for specific indices with persistence
     async def researcher_1_wrapper(state):
-        return await researcher_node(state, 0)
+        result = await researcher_node(state, 0)
+        # Persist after researchers complete (sources found)
+        try:
+            task_uuid = result.task_id if isinstance(result.task_id, UUID) else UUID(result.task_id)
+            sources_list = [{
+                "id": s.id if hasattr(s, 'id') else str(hash(s)),
+                "title": s.title if hasattr(s, 'title') else str(s),
+                "authors": s.authors if hasattr(s, 'authors') else "",
+                "publication": s.publication if hasattr(s, 'publication') else "",
+                "year": s.year if hasattr(s, 'year') else 0,
+                "url": s.url if hasattr(s, 'url') else "",
+                "credibility": s.credibility if hasattr(s, 'credibility') else 0.0,
+            } for s in result.sources] if result.sources else []
+            await _persist_metadata(
+                task_id=task_uuid,
+                current_step="researching",
+                sources=sources_list,
+                tokens_used=result.tokens_used or 0,
+                cost=result.cost or 0.0,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to persist researcher_1 metadata: {e}")
+        return result
     
     async def researcher_2_wrapper(state):
-        return await researcher_node(state, 1)
+        result = await researcher_node(state, 1)
+        return result
     
     async def researcher_3_wrapper(state):
-        return await researcher_node(state, 2)
+        result = await researcher_node(state, 2)
+        return result
     
     async def researcher_4_wrapper(state):
-        return await researcher_node(state, 3)
+        result = await researcher_node(state, 3)
+        return result
     
     async def researcher_5_wrapper(state):
-        return await researcher_node(state, 4)
+        result = await researcher_node(state, 4)
+        return result
     
     workflow.add_node("researcher_1", researcher_1_wrapper)
     workflow.add_node("researcher_2", researcher_2_wrapper)
     workflow.add_node("researcher_3", researcher_3_wrapper)
     workflow.add_node("researcher_4", researcher_4_wrapper)
     workflow.add_node("researcher_5", researcher_5_wrapper)
-    workflow.add_node("verifier", verifier_node)
-    workflow.add_node("researcher_retry", researcher_retry_node)
-    workflow.add_node("detector", detector_node)
-    workflow.add_node("synthesizer", synthesizer_node)
-    workflow.add_node("synthesizer_redo", synthesizer_redo_node)
-    workflow.add_node("reviewer", reviewer_node)
-    workflow.add_node("formatter", formatter_node)
+    
+    # Wrap major phase nodes
+    wrapped_verifier = _create_node_wrapper_with_persistence(verifier_node, "verifying")
+    wrapped_detector = _create_node_wrapper_with_persistence(detector_node, "detecting")
+    wrapped_synthesizer = _create_node_wrapper_with_persistence(synthesizer_node, "synthesizing")
+    wrapped_reviewer = _create_node_wrapper_with_persistence(reviewer_node, "reviewing")
+    wrapped_formatter = _create_node_wrapper_with_persistence(formatter_node, "formatting")
+    
+    workflow.add_node("verifier", wrapped_verifier)
+    wrapped_retry = _create_node_wrapper_with_persistence(researcher_retry_node, "researching_retry")
+    workflow.add_node("researcher_retry", wrapped_retry)
+    workflow.add_node("detector", wrapped_detector)
+    workflow.add_node("synthesizer", wrapped_synthesizer)
+    wrapped_redo = _create_node_wrapper_with_persistence(synthesizer_redo_node, "synthesizing_redo")
+    workflow.add_node("synthesizer_redo", wrapped_redo)
+    workflow.add_node("reviewer", wrapped_reviewer)
+    workflow.add_node("formatter", wrapped_formatter)
     
     # 2. Add deterministic edges (always taken)
     # Don't add edges from START; use set_entry_point() instead
@@ -384,7 +480,7 @@ _research_graph = create_research_graph()
 
 
 async def run_research(initial_state: ResearchState) -> ResearchState:
-    """Execute research workflow with full state management and persistence."""
+    """Execute research workflow with live metadata persistence at each phase."""
     
     initial_state.start_time = datetime.utcnow()
     initial_state.status = TaskStatus.RUNNING
@@ -403,13 +499,8 @@ async def run_research(initial_state: ResearchState) -> ResearchState:
             }
         }
         
-        # Convert task_id string back to UUID for callback
-        try:
-            task_uuid = UUID(initial_state.task_id) if isinstance(initial_state.task_id, str) else initial_state.task_id
-        except (ValueError, TypeError):
-            task_uuid = initial_state.task_id  # type: ignore
-        
-        # Invoke compiled graph with enhanced config
+        # Invoke compiled graph with wrapped nodes that auto-persist after each phase
+        # No need to manually persist after - the node wrappers handle it
         final_state_dict = await _research_graph.ainvoke(
             initial_state,
             config=config  # type: ignore
@@ -418,69 +509,7 @@ async def run_research(initial_state: ResearchState) -> ResearchState:
         # Convert dict back to ResearchState Pydantic model
         final_state = ResearchState(**final_state_dict) if isinstance(final_state_dict, dict) else final_state_dict
         
-        # Persist metadata at key execution points
-        # After researchers complete (we have sources)
-        if final_state.sources:
-            await _persist_metadata(
-                task_id=task_uuid,
-                current_step="researching",
-                sources=[{
-                    "id": s.id,
-                    "title": s.title,
-                    "authors": s.authors,
-                    "publication": s.publication,
-                    "year": s.year,
-                    "url": s.url,
-                    "credibility": s.credibility,
-                } for s in final_state.sources],
-                tokens_used=final_state.tokens_used or 0,
-                cost=final_state.cost or 0.0,
-            )
-        
-        # After detection/verification phase
-        if final_state.verified_sources or final_state.contradictions:
-            await _persist_metadata(
-                task_id=task_uuid,
-                current_step="verifying",
-                sources=[{
-                    "id": s.id,
-                    "title": s.title,
-                    "authors": s.authors,
-                    "publication": s.publication,
-                    "year": s.year,
-                    "url": s.url,
-                    "credibility": s.credibility,
-                } for s in (final_state.verified_sources or [])],
-                tokens_used=final_state.tokens_used or 0,
-                cost=final_state.cost or 0.0,
-            )
-        
-        # After synthesis phase
-        if final_state.draft_paper:
-            await _persist_metadata(
-                task_id=task_uuid,
-                current_step="synthesizing",
-                sources=[{
-                    "id": s.id,
-                    "title": s.title,
-                    "authors": s.authors,
-                    "publication": s.publication,
-                    "year": s.year,
-                    "url": s.url,
-                    "credibility": s.credibility,
-                } for s in final_state.sources],
-                tokens_used=final_state.tokens_used or 0,
-                cost=final_state.cost or 0.0,
-            )
-        
-        # Post-execution metrics
-        final_state.execution_metrics = {
-            "total_duration_seconds": (
-                (datetime.utcnow() - initial_state.start_time).total_seconds()
-            ),
-            "parallelism": "5-way researcher fan-out",
-        }
-        
+        # Mark as completed
         final_state.status = TaskStatus.COMPLETED
         final_state.end_time = datetime.utcnow()
         

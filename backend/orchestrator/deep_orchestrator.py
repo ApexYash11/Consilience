@@ -98,6 +98,64 @@ async def _persist_metadata(
             logger.warning(f"Failed to persist metadata for task {task_id}: {e}")
 
 
+def _create_node_wrapper_with_persistence(
+    node_func,
+    step_name: str,
+    node_name: str = None,
+):
+    """
+    Wrap a node function to persist metadata after execution.
+    
+    This ensures that frontend sees live updates as each phase completes,
+    instead of waiting for the entire workflow to finish.
+    
+    Args:
+        node_func: The async node function to wrap
+        step_name: Name of the current step (e.g., "planning", "deep_researching")
+        node_name: Optional name for logging
+    """
+    async def wrapped_node(state: ResearchState) -> ResearchState:
+        # Execute the node
+        result_state = await node_func(state)
+        
+        # Immediately persist metadata so frontend gets live updates
+        try:
+            task_uuid = (
+                result_state.task_id 
+                if isinstance(result_state.task_id, UUID) 
+                else UUID(result_state.task_id)
+            )
+            
+            # Prepare sources list
+            sources_list = []
+            if result_state.sources:
+                sources_list = [{
+                    "id": s.id if hasattr(s, 'id') else str(hash(s)),
+                    "title": s.title if hasattr(s, 'title') else str(s),
+                    "authors": s.authors if hasattr(s, 'authors') else "",
+                    "publication": s.publication if hasattr(s, 'publication') else "",
+                    "year": s.year if hasattr(s, 'year') else 0,
+                    "url": s.url if hasattr(s, 'url') else "",
+                    "credibility": s.credibility if hasattr(s, 'credibility') else 0.0,
+                } for s in result_state.sources]
+            
+            # Persist this phase's progress
+            await _persist_metadata(
+                task_id=task_uuid,
+                current_step=step_name,
+                sources=sources_list,
+                tokens_used=result_state.tokens_used or 0,
+                cost=result_state.cost or 0.0,
+            )
+            logger.info(f"Persisted metadata for step {step_name} (task {result_state.task_id})")
+        except Exception as e:
+            logger.warning(f"Failed to persist metadata for step {step_name}: {e}")
+        
+        return result_state
+    
+    return wrapped_node
+
+
 # Node wrapper coroutines (required by LangGraph)
 
 async def deep_researcher_wrapper(state: ResearchState) -> ResearchState:
@@ -194,10 +252,16 @@ def create_deep_research_graph():
     
     workflow = StateGraph(ResearchState)
     
-    # Add all nodes
-    workflow.add_node("planner", planner_node)
-    workflow.add_node("deep_researcher", deep_researcher_wrapper)
-    workflow.add_node("verifier", verifier_deep_wrapper)
+    # Add all nodes with persistence wrappers for major phases
+    wrapped_planner = _create_node_wrapper_with_persistence(planner_node, "planning")
+    workflow.add_node("planner", wrapped_planner)
+    
+    wrapped_deep_researcher = _create_node_wrapper_with_persistence(deep_researcher_wrapper, "deep_researching")
+    workflow.add_node("deep_researcher", wrapped_deep_researcher)
+    
+    wrapped_verifier = _create_node_wrapper_with_persistence(verifier_deep_wrapper, "verifying")
+    workflow.add_node("verifier", wrapped_verifier)
+    
     # Researcher retry node - increments rejection count
     async def researcher_retry_wrapper(state: ResearchState) -> ResearchState:
         """Increment rejection count and return unchanged state."""
@@ -205,11 +269,19 @@ def create_deep_research_graph():
         return state
     
     workflow.add_node("researcher_retry", researcher_retry_wrapper)
-    workflow.add_node("detector", detector_deep_wrapper)
-    workflow.add_node("synthesizer", synthesizer_deep_wrapper)
-    workflow.add_node("synthesizer_redo", synthesizer_deep_wrapper)
-    workflow.add_node("reviewer", reviewer_deep_wrapper)
-    workflow.add_node("formatter", formatter_deep_wrapper)
+    
+    wrapped_detector = _create_node_wrapper_with_persistence(detector_deep_wrapper, "detecting")
+    workflow.add_node("detector", wrapped_detector)
+    
+    wrapped_synthesizer = _create_node_wrapper_with_persistence(synthesizer_deep_wrapper, "synthesizing")
+    workflow.add_node("synthesizer", wrapped_synthesizer)
+    workflow.add_node("synthesizer_redo", wrapped_synthesizer)
+    
+    wrapped_reviewer = _create_node_wrapper_with_persistence(reviewer_deep_wrapper, "reviewing")
+    workflow.add_node("reviewer", wrapped_reviewer)
+    
+    wrapped_formatter = _create_node_wrapper_with_persistence(formatter_deep_wrapper, "formatting")
+    workflow.add_node("formatter", wrapped_formatter)
     
     # Set entry point
     workflow.set_entry_point("planner")
@@ -300,7 +372,7 @@ def create_deep_research_graph():
 
 async def run_deep_research(initial_state: ResearchState) -> ResearchState:
     """
-    Execute the deep research workflow.
+    Execute the deep research workflow with live metadata persistence at each phase.
     
     Args:
         initial_state: Initial research state with topic and requirements
@@ -313,12 +385,6 @@ async def run_deep_research(initial_state: ResearchState) -> ResearchState:
     try:
         # Create the graph
         graph = create_deep_research_graph()
-        
-        # Convert task_id string back to UUID for callback
-        try:
-            task_uuid = UUID(initial_state.task_id) if isinstance(initial_state.task_id, str) else initial_state.task_id
-        except (ValueError, TypeError):
-            task_uuid = initial_state.task_id  # type: ignore
         
         # Prepare LangSmith config with metadata for observability
         config: Dict[str, Any] = {
@@ -334,44 +400,13 @@ async def run_deep_research(initial_state: ResearchState) -> ResearchState:
             }
         }
         
-        # Execute the workflow with enhanced config
+        # Execute the workflow with wrapped nodes that auto-persist after each phase
+        # No need to manually persist after - the node wrappers handle it
         final_state = cast(ResearchState, await graph.ainvoke(initial_state, config=config))  # type: ignore
         
-        # Persist metadata at key execution points
-        if final_state.sources:
-            await _persist_metadata(
-                task_id=task_uuid,
-                current_step="researching",
-                sources=[{
-                    "id": s.id,
-                    "title": s.title,
-                    "authors": s.authors,
-                    "publication": s.publication,
-                    "year": s.year,
-                    "url": s.url,
-                    "credibility": s.credibility,
-                } for s in final_state.sources],
-                tokens_used=final_state.tokens_used or 0,
-                cost=final_state.cost or 0.0,
-            )
-        
-        # After detection/verification phase
-        if final_state.verified_sources or final_state.contradictions:
-            await _persist_metadata(
-                task_id=task_uuid,
-                current_step="verifying",
-                sources=[{
-                    "id": s.id,
-                    "title": s.title,
-                    "authors": s.authors,
-                    "publication": s.publication,
-                    "year": s.year,
-                    "url": s.url,
-                    "credibility": s.credibility,
-                } for s in (final_state.verified_sources or [])],
-                tokens_used=final_state.tokens_used or 0,
-                cost=final_state.cost or 0.0,
-            )
+        # Mark as completed
+        final_state.status = TaskStatus.COMPLETED
+        final_state.end_time = initial_state.start_time if hasattr(initial_state, 'start_time') else None
         
         logger.info(
             f"Deep research workflow completed for task {initial_state.task_id}: "

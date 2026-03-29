@@ -5,6 +5,28 @@ import type { ResearchStatus } from "@/types/research";
 
 const POLL_INTERVAL = 2000; // 2 seconds
 
+// Format remaining seconds into human-readable time format
+function formatRemainingTime(seconds: number | string | null | undefined): string | undefined {
+  if (!seconds) return undefined;
+  
+  const numSeconds = typeof seconds === 'string' ? Number(seconds) : seconds;
+  if (!numSeconds || numSeconds <= 0 || isNaN(numSeconds)) return undefined;
+  
+  const minutes = Math.floor(numSeconds / 60);
+  const secs = Math.floor(numSeconds % 60);
+  
+  if (minutes > 0 && secs > 0) {
+    return `${minutes}m ${secs}s`;
+  }
+  if (minutes > 0) {
+    return `${minutes}m`;
+  }
+  if (secs > 0) {
+    return `${secs}s`;
+  }
+  return undefined;
+}
+
 interface UseResearchStatusReturn {
   status: ResearchStatus | null;
   progress: number;
@@ -203,7 +225,7 @@ export function useResearchStatus(taskId: string | null): UseResearchStatusRetur
       cost: status && status.tokens && status.costPerToken
         ? status.tokens * status.costPerToken
         : 0,
-      estimatedRemaining: status?.estimatedRemaining,
+      estimatedRemaining: formatRemainingTime(status?.estimatedRemaining),
       model: status?.model,
     },
     error,
