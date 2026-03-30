@@ -8,6 +8,30 @@ import { ProtectedRoute } from "@/components/auth/ProtectedRoute"
 import { useResearchTasks } from "@/hooks/useResearchTasks"
 import { Clock, CheckCircle, AlertCircle, Loader, Plus, Trash2 } from "lucide-react"
 
+// Custom error class for authentication failures
+class AuthenticationError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = "AuthenticationError"
+  }
+}
+
+// Helper to get safe API URL
+function getApiUrl(): string {
+  const envUrl = process.env.NEXT_PUBLIC_API_BASE_URL
+  if (envUrl) {
+    return envUrl
+  }
+  
+  // In production, throw error if env var is missing
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("NEXT_PUBLIC_API_BASE_URL environment variable is not configured")
+  }
+  
+  // In development, fall back to localhost
+  return "http://localhost:8000"
+}
+
 export default function ResearchPage() {
   const router = useRouter()
   const [page, setPage] = useState(1)
@@ -23,9 +47,16 @@ export default function ResearchPage() {
 
     setDeletingId(taskId)
     try {
-      const response = await fetch(`/api/research/${taskId}`, {
+      const token = localStorage.getItem("consilience_access_token")
+      if (!token) {
+        throw new AuthenticationError("Authentication token not found")
+      }
+
+      const apiUrl = getApiUrl()
+      const response = await fetch(`${apiUrl}/api/research/${taskId}`, {
         method: "DELETE",
         headers: {
+          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
       })
@@ -43,6 +74,20 @@ export default function ResearchPage() {
       await refetch()
     } catch (err) {
       console.error("Delete error:", err)
+      
+      // Handle authentication errors with redirect
+      if (err instanceof AuthenticationError) {
+        alert("Your session has expired. Please sign in again.")
+        router.push("/login")
+        return
+      }
+      
+      // Handle configuration errors
+      if (err instanceof Error && err.message.includes("NEXT_PUBLIC_API_BASE_URL")) {
+        alert("API configuration error. Please contact support.")
+        return
+      }
+      
       alert("Failed to delete task. Please try again.")
     } finally {
       setDeletingId(null)

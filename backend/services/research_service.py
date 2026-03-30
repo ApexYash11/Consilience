@@ -216,7 +216,10 @@ class ResearchService:
             delete(ResearchCheckpointDB).where(ResearchCheckpointDB.task_id == task_id)
         )
         await session.execute(
-            delete(AgentActionLogDB).where(AgentActionLogDB.task_id == task_id)
+            delete(AgentActionDB).where(AgentActionDB.task_id == task_id)
+        )
+        await session.execute(
+            delete(TokenUsageLogDB).where(TokenUsageLogDB.task_id == task_id)
         )
         
         # Then delete the task itself
