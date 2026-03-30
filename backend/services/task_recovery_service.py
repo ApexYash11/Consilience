@@ -10,6 +10,7 @@ Problem 2: Orphaned Tasks
 
 import asyncio
 import logging
+import os
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -122,13 +123,32 @@ class TaskRecoveryService:
         """
         On startup, find tasks in RUNNING status and mark them as FAILED.
         These are tasks orphaned by a server crash.
+        
+        In multi-server setups, only mark tasks owned by this instance (filtered by worker_id).
+        This prevents one server from incorrectly marking tasks owned by another server as FAILED.
         """
         try:
+            # Get current worker ID from environment (default to None for single-server)
+            current_worker_id = os.getenv('WORKER_ID')
+            
             async with AsyncSessionLocal() as session:
-                # Find all tasks in RUNNING status
-                result = await session.execute(
-                    select(ResearchTaskDB).where(ResearchTaskDB.status == TaskStatus.RUNNING)
-                )
+                # Build query to find tasks in RUNNING status
+                query = select(ResearchTaskDB).where(ResearchTaskDB.status == TaskStatus.RUNNING)
+                
+                # If worker_id tracking is available, only mark our own tasks as orphaned
+                # Otherwise, skip aggressive sweep and rely on heartbeat-based detection
+                if current_worker_id and hasattr(ResearchTaskDB, 'worker_id'):
+                    query = query.where(ResearchTaskDB.worker_id == current_worker_id)
+                    logger.info(f"TaskRecoveryService: Startup sweep limited to worker {current_worker_id}")
+                elif current_worker_id:
+                    # Worker ID set but table doesn't have worker_id column - log and continue
+                    logger.info("TaskRecoveryService: WORKER_ID set but worker_id not in schema; skipping aggressive sweep")
+                    return
+                else:
+                    # No worker ID - single-server mode, safe to mark all RUNNING tasks as orphaned
+                    logger.info("TaskRecoveryService: No WORKER_ID set; using single-server recovery")
+                
+                result = await session.execute(query)
                 orphaned_tasks = result.scalars().all()
                 
                 if orphaned_tasks:

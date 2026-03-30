@@ -81,27 +81,28 @@ class OpenRouterRequestQueue:
 
     async def submit(
         self,
-        coro: Coroutine,
+        coro_factory: Callable[[], Coroutine],
         timeout_seconds: float = 60.0,
         agent_name: str = "unknown",
-        task_id: Optional[UUID] = None,
-        retry_count: int = 0,
     ) -> Any:
         """
-        Submit an LLM call through the queue.
+        Submit a coroutine factory to the queue for execution with rate limiting and retry.
+        
+        The coroutine factory is called to create a fresh coroutine for each attempt,
+        allowing proper retries on 429 rate limit errors.
         
         Enforces:
         1. Concurrency limit (max N simultaneous calls)
         2. Rate limit (max M calls per minute)
         3. Timeout per call
-        4. Retry logic on 429 responses
+        4. Retry logic on 429 responses with fresh coroutine per attempt
         
         Args:
-            coro: The coroutine to execute (e.g., llm.ainvoke(...))
-            timeout_seconds: Timeout for this specific call
+            coro_factory: Callable that returns a fresh coroutine (not a coroutine object!)
+                         Use: queue.submit(lambda: llm.ainvoke(...), ...)
+                         NOT:  queue.submit(llm.ainvoke(...), ...)
+            timeout_seconds: Timeout for each attempt in seconds
             agent_name: Name of agent making the call (for logging)
-            task_id: Optional task ID for tracking
-            retry_count: Internal retry counter (don't set manually)
             
         Returns:
             Result from the coroutine
@@ -110,84 +111,91 @@ class OpenRouterRequestQueue:
             asyncio.TimeoutError: If call exceeds timeout
             Exception: From the underlying coroutine
         """
-        request_id = hash((agent_name, time.time(), retry_count))
+        task_id = uuid4()
+        retry_count = 0
+        
+        while retry_count <= self.max_retries_on_429:
+            request_id = hash((agent_name, time.time(), retry_count))
 
-        try:
-            # Track this request
-            async with self._pending_requests_lock:
-                self._pending_requests.add(request_id)
+            try:
+                # Track this request
+                async with self._pending_requests_lock:
+                    self._pending_requests.add(request_id)
 
-            # Step 1: Rate limit gate (wait until call window allows another call)
-            await self._rate_limit_gate(agent_name)
+                # Step 1: Rate limit gate (wait until call window allows another call)
+                await self._rate_limit_gate(agent_name)
 
-            # Step 2: Concurrency gate (wait for available slot)
-            async with self._semaphore:
-                # Record this call timestamp for rate limiting
-                async with self._call_times_lock:
-                    self._call_times.append(time.time())
+                # Step 2: Concurrency gate (wait for available slot)
+                async with self._semaphore:
+                    # Record this call timestamp for rate limiting
+                    async with self._call_times_lock:
+                        self._call_times.append(time.time())
 
-                try:
-                    # Step 3: Execute with timeout (wrap in task for proper cancellation)
-                    logger.debug(
-                        f"[{agent_name}] Starting request (task_id={task_id}, "
-                        f"pending={len(self._pending_requests)})"
-                    )
-
-                    # Create task inside lock to eliminate race condition
-                    async with self._pending_requests_lock:
-                        current_task = asyncio.create_task(coro)
-                        self._pending_tasks[request_id] = current_task
-                    
                     try:
-                        result = await asyncio.wait_for(current_task, timeout=timeout_seconds)
-                        logger.debug(f"[{agent_name}] Request completed successfully")
-                        return result
-                    finally:
+                        # Step 3: Execute with timeout (wrap in task for proper cancellation)
+                        logger.debug(
+                            f"[{agent_name}] Starting request (task_id={task_id}, "
+                            f"pending={len(self._pending_requests)})"
+                        )
+
+                        # Create task inside lock to eliminate race condition
+                        # Create a FRESH coroutine from the factory for each attempt
+                        coro = coro_factory()
                         async with self._pending_requests_lock:
-                            self._pending_tasks.pop(request_id, None)
+                            current_task = asyncio.create_task(coro)
+                            self._pending_tasks[request_id] = current_task
+                        
+                        try:
+                            result = await asyncio.wait_for(current_task, timeout=timeout_seconds)
+                            logger.debug(f"[{agent_name}] Request completed successfully")
+                            return result
+                        finally:
+                            async with self._pending_requests_lock:
+                                self._pending_tasks.pop(request_id, None)
 
-                except asyncio.TimeoutError as e:
-                    logger.warning(
-                        f"[{agent_name}] Request timed out after {timeout_seconds}s "
-                        f"(task_id={task_id})"
-                    )
-                    raise
+                    except asyncio.TimeoutError as e:
+                        logger.warning(
+                            f"[{agent_name}] Request timed out after {timeout_seconds}s "
+                            f"(task_id={task_id})"
+                        )
+                        raise
 
-                except Exception as e:
-                    error_message = str(e)
+                    except Exception as e:
+                        error_message = str(e)
 
-                    # Step 4: Check for 429 rate limit response
-                    if self._is_rate_limit_error(e):
-                        retry_after = self._extract_retry_after(e, retry_count)
+                        # Step 4: Check for 429 rate limit response
+                        if self._is_rate_limit_error(e):
+                            retry_after = self._extract_retry_after(e, retry_count)
 
-                        if retry_count < self.max_retries_on_429:
-                            logger.warning(
-                                f"[{agent_name}] Rate limited (429). "
-                                f"Retrying in {retry_after}s (attempt {retry_count + 1}/{self.max_retries_on_429})"
-                            )
+                            if retry_count < self.max_retries_on_429:
+                                logger.warning(
+                                    f"[{agent_name}] Rate limited (429). "
+                                    f"Retrying in {retry_after}s (attempt {retry_count + 1}/{self.max_retries_on_429})"
+                                )
 
-                            # Wait for the specified duration
-                            await asyncio.sleep(retry_after)
+                                # Wait for the specified duration
+                                await asyncio.sleep(retry_after)
+                                
+                                # Increment retry count and loop to create a FRESH coroutine
+                                retry_count += 1
+                                # Untrack and continue to next attempt
+                                async with self._pending_requests_lock:
+                                    self._pending_requests.discard(request_id)
+                                continue
+                            else:
+                                logger.error(
+                                    f"[{agent_name}] Rate limited (429) after "
+                                    f"{self.max_retries_on_429} retries. Giving up."
+                                )
+                                raise
 
-                            # Recursively retry - client must pass coro factory if retries needed
-                            logger.warning(
-                                f"[{agent_name}] Retried 429 response; aborting after {retry_count + 1} attempts"
-                            )
-                            raise
-                        else:
-                            logger.error(
-                                f"[{agent_name}] Rate limited (429) after "
-                                f"{self.max_retries_on_429} retries. Giving up."
-                            )
-                            raise
+                        # Re-raise non-rate-limit errors
+                        raise
 
-                    # Re-raise non-rate-limit errors
-                    raise
-
-        finally:
-            # Untrack this request
-            async with self._pending_requests_lock:
-                self._pending_requests.discard(request_id)
+            finally:
+                # Untrack this request
+                async with self._pending_requests_lock:
+                    self._pending_requests.discard(request_id)
 
     async def _rate_limit_gate(self, agent_name: str) -> None:
         """
@@ -282,15 +290,16 @@ class OpenRouterRequestQueue:
                         # First try as integer (seconds)
                         return float(retry_after_header)
                     except ValueError:
-                        # Try as HTTP-date (not common for OpenRouter, but supported)
+                        # Try as HTTP-date using email.utils for reliable parsing
                         try:
-                            retry_time = datetime.strptime(
-                                retry_after_header, "%a, %d %b %Y %H:%M:%S %Z"
-                            )
-                            wait_time = (retry_time - datetime.utcnow()).total_seconds()
+                            from email.utils import parsedate_to_datetime
+                            from datetime import timezone
+                            
+                            parsed_dt = parsedate_to_datetime(retry_after_header)
+                            wait_time = (parsed_dt - datetime.now(timezone.utc)).total_seconds()
                             if wait_time > 0:
                                 return wait_time
-                        except ValueError:
+                        except (ValueError, TypeError):
                             pass
 
         # Fallback: exponential backoff with max 300s

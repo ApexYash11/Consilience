@@ -57,12 +57,13 @@ async def call_llm_async(
             f"(timeout={timeout_seconds}s)"
         )
         
-        # Create coroutine for queue to execute
-        async def llm_call():
-            return await llm.ainvoke(messages)
+        # Create coroutine factory (not a coroutine!) for queue to execute with proper retries
+        def llm_call_factory():
+            """Factory that creates a fresh coroutine for each attempt."""
+            return llm.ainvoke(messages)
         
         return await queue.submit(
-            llm_call(),
+            llm_call_factory,
             timeout_seconds=timeout_seconds,
             agent_name=agent_name,
         )
@@ -111,6 +112,15 @@ def call_llm_sync(
         )
     else:
         # There's a running loop, but we can't use async context from sync
-        # Fall back to direct call
-        logger.debug(f"[{agent_name}] Sync context with running loop; calling LLM directly")
-        return llm.invoke(messages)
+        # Schedule the async helper via run_coroutine_threadsafe to use the request queue
+        logger.debug(f"[{agent_name}] Sync context with running loop; scheduling async call via queue")
+        try:
+            future = asyncio.run_coroutine_threadsafe(
+                call_llm_async(llm, messages, timeout_seconds=60.0, agent_name=agent_name),
+                loop
+            )
+            # Wait for result with timeout to enforce the same 60s bound
+            return future.result(timeout=60)
+        except Exception as e:
+            logger.error(f"[{agent_name}] Failed to schedule async LLM call: {e}")
+            raise

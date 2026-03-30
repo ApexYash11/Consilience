@@ -7,6 +7,7 @@ Uses DeepSeek R1-0528 (free) for planning phase.
 - $0.00 cost
 """
 
+import asyncio
 import json
 import logging
 import re
@@ -39,6 +40,9 @@ logger = logging.getLogger(__name__)
 # Create agent instance (with retry config)
 _planner = BaseAgent("planner", "planning")
 
+# Module-level lock for coordinating queue injection (prevents race conditions)
+_queue_injection_lock = asyncio.Lock()
+
 
 async def planner_node(state: ResearchState) -> ResearchState:
     """
@@ -46,8 +50,10 @@ async def planner_node(state: ResearchState) -> ResearchState:
     """
 
     # Inject request queue into agent for coordinated rate limiting (idempotent)
-    if not _planner.request_queue:  # Only inject if not already set
-        inject_queue_to_agent(_planner)
+    # Use lock to prevent race condition where multiple coroutines check-then-inject simultaneously
+    async with _queue_injection_lock:
+        if not _planner.request_queue:  # Only inject if not already set
+            inject_queue_to_agent(_planner)
 
     agent_name = "planner"
     agent_type = "planning"

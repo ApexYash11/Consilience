@@ -37,6 +37,8 @@ async def apply_migration():
     
     # Redact credentials from logs using proper URL parsing
     try:
+        from urllib.parse import parse_qsl, urlencode
+        
         parsed = urlparse(db_url)
         if parsed.username or parsed.password:
             # Rebuild URL with masked credentials
@@ -44,8 +46,20 @@ async def apply_migration():
             if parsed.port:
                 netloc += f":{parsed.port}"
             redacted_url = f"{parsed.scheme}://{netloc}{parsed.path}"
+            
+            # Sanitize query parameters to remove sensitive keys
             if parsed.query:
-                redacted_url += f"?{parsed.query}"
+                sensitive_keys = {
+                    'sslpassword', 'sslkey', 'password', 'pass', 'credentials', 
+                    'user', 'username', 'auth', 'token', 'api_key', 'secret'
+                }
+                params = parse_qsl(parsed.query, keep_blank_values=True)
+                safe_params = [
+                    (k, '<redacted>' if k.lower() in sensitive_keys else v)
+                    for k, v in params
+                ]
+                if safe_params:
+                    redacted_url += f"?{urlencode(safe_params)}"
         else:
             # No credentials to redact
             redacted_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}" if parsed.netloc else db_url[:50]
@@ -54,12 +68,14 @@ async def apply_migration():
         # Remove userinfo (username:password@) from the URL before truncating
         sanitized = db_url
         if '@' in db_url:
-            # Remove everything before and including the @
+            # Remove everything before and including the @ using rsplit to handle @ in passwords
             parts = db_url.rsplit('@', 1)  # Split from right to avoid @ in passwords
             if len(parts) == 2:
                 scheme_part = parts[0].split('://')
                 if len(scheme_part) >= 2:
-                    sanitized = scheme_part[0] + '://<redacted>@' + parts[1]
+                    # Rebuild with redacted userinfo
+                    scheme = scheme_part[0]
+                    sanitized = f"{scheme}://<redacted>@{parts[1]}"
         redacted_url = sanitized[:50] if len(sanitized) > 50 else sanitized
     print(f"Connecting to database: {redacted_url}...")
     

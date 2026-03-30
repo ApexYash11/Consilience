@@ -148,13 +148,13 @@ async def _persist_metadata_to_db(
                 "current_step": current_step,
                 "sources": sources,
                 "model": model,
-                "cost_per_token": cost / tokens if tokens > 0 else 0.0,  # Calculate from actual values
+                "cost_per_token": cost / tokens_used if tokens_used > 0 else 0.0,  # Calculate from actual values
             }
             
             logger.info(
                 f"Persisting metadata for task {task_id}: "
                 f"step={current_step}, sources={len(sources)}, "
-                f"tokens={tokens}, cost=${cost:.4f}, model={model}"
+                f"tokens={tokens_used}, cost=${cost:.4f}, model={model}"
             )
             
             # Update task with current progress
@@ -1033,7 +1033,8 @@ async def delete_research_task(
                     f"Background task {task_uuid} did not complete within 30s timeout. "
                     f"Task status: {task.status}. Proceeding with record update."
                 )
-                # Don't delete if still marked as RUNNING - normalize string comparison
+                # Normalize status string and mark RUNNING tasks as FAILED with specific error message
+                # This indicates the task was cancelled but did not terminate cleanly
                 task_status_str = task.status.value if hasattr(task.status, 'value') else str(task.status)
                 if task_status_str == TaskStatus.RUNNING.value:
                     await ResearchService.update_research_task(
@@ -1132,7 +1133,9 @@ async def _execute_deep_research_background(
                 status=TaskStatus.FAILED,
                 error_message=f"Quota exhausted before task execution: {str(quota_err)}",
             )
-            raise
+            # Return early - do NOT re-raise to allow outer exception handler to update task again
+            # This preserves the specific quota error message without being overwritten
+            return state
 
         # Prepare trace metadata
         trace_metadata = {

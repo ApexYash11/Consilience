@@ -33,21 +33,37 @@ def apply_migration():
         engine = create_engine(db_url, connect_args={"connect_timeout": 10})
         
         with engine.begin() as conn:
-            # Check if columns already exist (restrict to public schema)
+            # Check if ALL migration requirements already exist (restrict to public schema)
             check_sql = text("""
-                SELECT EXISTS (
-                    SELECT 1 FROM information_schema.columns 
-                    WHERE table_schema = 'public'
-                    AND table_name = 'research_tasks' 
-                    AND column_name = 'last_heartbeat'
-                )
+                SELECT 
+                    COUNT(CASE WHEN column_name = 'last_heartbeat' THEN 1 END) as has_last_heartbeat,
+                    COUNT(CASE WHEN column_name = 'failure_reason' THEN 1 END) as has_failure_reason
+                FROM information_schema.columns 
+                WHERE table_schema = 'public'
+                AND table_name = 'research_tasks'
             """)
             
             result = conn.execute(check_sql)
-            has_heartbeat = result.scalar()
+            row = result.fetchone()
+            has_last_heartbeat = row[0] > 0 if row else False
+            has_failure_reason = row[1] > 0 if row else False
             
-            if has_heartbeat:
-                print("✓ Columns already exist - migration appears applied")
+            # Also check if the index exists
+            check_index_sql = text("""
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.statistics
+                    WHERE table_schema = 'public'
+                    AND table_name = 'research_tasks'
+                    AND index_name = 'ix_research_tasks_last_heartbeat'
+                )
+            """)
+            
+            index_result = conn.execute(check_index_sql)
+            has_index = index_result.scalar()
+            
+            # Only return true if ALL three items exist
+            if has_last_heartbeat and has_failure_reason and has_index:
+                print("✓ All migration components already exist - migration appears applied")
                 return True
             
             # Add last_heartbeat column
