@@ -133,9 +133,9 @@ class OpenRouterRequestQueue:
                         f"pending={len(self._pending_requests)})"
                     )
 
-                    # Create task so it can be cancelled during shutdown
-                    current_task = asyncio.create_task(coro)
+                    # Create task inside lock to eliminate race condition
                     async with self._pending_requests_lock:
+                        current_task = asyncio.create_task(coro)
                         self._pending_tasks[request_id] = current_task
                     
                     try:
@@ -317,6 +317,7 @@ class OpenRouterRequestQueue:
         )
 
         # Cancel pending tasks with proper cleanup (inside critical section)
+        cancelled_tasks = []
         async with self._pending_requests_lock:
             pending_ids = list(self._pending_requests)
             for request_id in pending_ids:
@@ -327,10 +328,17 @@ class OpenRouterRequestQueue:
                 task = self._pending_tasks.pop(request_id, None)
                 if task and isinstance(task, asyncio.Task) and not task.done():
                     task.cancel()
+                    cancelled_tasks.append(task)
                     logger.debug(f"Task for request {request_id} cancelled")
 
-        # Give pending tasks a moment to clean up
-        await asyncio.sleep(0.1)
+        # Await all cancelled tasks to ensure proper cleanup (finally blocks, resource release)
+        if cancelled_tasks:
+            results = await asyncio.gather(*cancelled_tasks, return_exceptions=True)
+            for result in results:
+                if isinstance(result, asyncio.CancelledError):
+                    pass  # Expected from cancellation
+                elif isinstance(result, Exception):
+                    logger.debug(f"Task cleanup exception: {result}")
 
         logger.info("OpenRouterRequestQueue shutdown complete")
 

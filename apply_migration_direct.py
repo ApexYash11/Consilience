@@ -50,8 +50,17 @@ async def apply_migration():
             # No credentials to redact
             redacted_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}" if parsed.netloc else db_url[:50]
     except Exception:
-        # Fallback if URL parsing fails
-        redacted_url = db_url[:50] if len(db_url) > 50 else db_url
+        # Fallback if URL parsing fails - still sanitize credentials
+        # Remove userinfo (username:password@) from the URL before truncating
+        sanitized = db_url
+        if '@' in db_url:
+            # Remove everything before and including the @
+            parts = db_url.rsplit('@', 1)  # Split from right to avoid @ in passwords
+            if len(parts) == 2:
+                scheme_part = parts[0].split('://')
+                if len(scheme_part) >= 2:
+                    sanitized = scheme_part[0] + '://<redacted>@' + parts[1]
+        redacted_url = sanitized[:50] if len(sanitized) > 50 else sanitized
     print(f"Connecting to database: {redacted_url}...")
     
     engine = None
