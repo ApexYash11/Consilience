@@ -34,8 +34,11 @@ async def apply_migration():
         print(f"Available env vars: {', '.join([k for k in os.environ.keys() if 'DATABASE' in k or 'DB' in k])}")
         return False
     
-    print(f"Connecting to database: {db_url[:50]}...")
+    # Redact credentials from logs
+    redacted_url = db_url.split('://')[0] + "://***:***@" + db_url.split('@')[1] if '@' in db_url else db_url[:50]
+    print(f"Connecting to database: {redacted_url}...")
     
+    engine = None
     try:
         # Create async engine
         engine = create_async_engine(
@@ -97,7 +100,8 @@ async def apply_migration():
         traceback.print_exc()
         return False
     finally:
-        await engine.dispose()
+        if engine:
+            await engine.dispose()
 
 
 if __name__ == '__main__':

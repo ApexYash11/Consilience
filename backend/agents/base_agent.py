@@ -106,12 +106,18 @@ class BaseAgent:
                 agent_name=self.agent_name,
             )
 
-        # Fallback: use local timeout + retry logic (backward compatibility)
-        # Wrap LLM call with timeout
+        # Fallback: use timeout + retry + circuit breaker (backward compatibility)
+        # Wrap LLM call with retry and circuit breaker for resilience
         async def llm_call_with_timeout():
             try:
-                async with asyncio.timeout(timeout_seconds):
-                    return await llm_func(*args, **kwargs)
+                # Apply circuit breaker + retry wrapper for consistency with queue path
+                return await retry_with_backoff(
+                    self.circuit_breaker.call(
+                        self._ensure_llm_call(llm_func, *args, **kwargs)
+                    ),
+                    retry_config=self.retry_config,
+                    operation_name=f"{self.agent_name}_llm_call"
+                )
             except asyncio.TimeoutError:
                 logger.error(
                     f"{self.agent_name} LLM call timed out after {timeout_seconds}s"

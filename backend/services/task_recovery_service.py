@@ -57,14 +57,27 @@ class TaskRecoveryService:
 
     @classmethod
     async def shutdown(cls) -> None:
-        """Called on app shutdown. Cancels background tasks."""
+        """Called on app shutdown. Cancels and awaits background tasks."""
         logger.info("TaskRecoveryService: Shutting down")
         cls._is_running = False
         
+        # Cancel and wait for background tasks to finish
+        tasks_to_cancel = []
         if cls._heartbeat_task:
             cls._heartbeat_task.cancel()
+            tasks_to_cancel.append(cls._heartbeat_task)
         if cls._recovery_sweep_task:
             cls._recovery_sweep_task.cancel()
+            tasks_to_cancel.append(cls._recovery_sweep_task)
+        
+        # Wait for all tasks to finish, catching CancelledError
+        if tasks_to_cancel:
+            results = await asyncio.gather(*tasks_to_cancel, return_exceptions=True)
+            for result in results:
+                if isinstance(result, asyncio.CancelledError):
+                    pass  # Expected
+                elif isinstance(result, Exception):
+                    logger.warning(f"TaskRecoveryService: Task shutdown exception: {result}")
         
         logger.info("TaskRecoveryService: Shutdown complete")
 
@@ -124,13 +137,22 @@ class TaskRecoveryService:
     @classmethod
     async def _background_heartbeat_loop(cls) -> None:
         """
-        Background task that updates heartbeats for all RUNNING tasks periodically.
-        This is a simple approach - in production, orchestrators should call update_heartbeat().
+        Background task that periodically refreshes heartbeats for all RUNNING tasks.
+        This ensures active tasks don't get marked as orphaned if update_heartbeat() calls are missed.
         """
         while cls._is_running:
             try:
-                # Note: This is a fallback. Orchestrators should actively call update_heartbeat()
                 await asyncio.sleep(cls.HEARTBEAT_INTERVAL_SECONDS)
+                
+                # Refresh heartbeat for RUNNING tasks (fallback if update_heartbeat() calls are missing)
+                async with AsyncSessionLocal() as session:
+                    await session.execute(
+                        update(ResearchTaskDB)
+                        .where(ResearchTaskDB.status == TaskStatus.RUNNING)
+                        .values(last_heartbeat=datetime.utcnow())
+                    )
+                    await session.commit()
+                    logger.debug("TaskRecoveryService: Heartbeat loop refreshed active tasks")
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -163,11 +185,14 @@ class TaskRecoveryService:
             
             async with AsyncSessionLocal() as session:
                 # Find RUNNING tasks with stale heartbeat
+                # Grace period: tasks with NULL heartbeat are only orphaned if older than 30s
+                grace_period_threshold = now - timedelta(seconds=30)
                 result = await session.execute(
                     select(ResearchTaskDB).where(
                         (ResearchTaskDB.status == TaskStatus.RUNNING) &
                         (
-                            (ResearchTaskDB.last_heartbeat.is_(None)) |  # type: ignore
+                            ((ResearchTaskDB.last_heartbeat.is_(None)) &  # type: ignore
+                             (ResearchTaskDB.created_at < grace_period_threshold)) |
                             (ResearchTaskDB.last_heartbeat < orphan_threshold)
                         )
                     )

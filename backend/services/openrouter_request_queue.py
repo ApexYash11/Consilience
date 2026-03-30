@@ -147,7 +147,7 @@ class OpenRouterRequestQueue:
 
                     # Step 4: Check for 429 rate limit response
                     if self._is_rate_limit_error(e):
-                        retry_after = self._extract_retry_after(e)
+                        retry_after = self._extract_retry_after(e, retry_count)
 
                         if retry_count < self.max_retries_on_429:
                             logger.warning(
@@ -158,14 +158,11 @@ class OpenRouterRequestQueue:
                             # Wait for the specified duration
                             await asyncio.sleep(retry_after)
 
-                            # Recursively retry
-                            return await self.submit(
-                                coro=coro,
-                                timeout_seconds=timeout_seconds,
-                                agent_name=agent_name,
-                                task_id=task_id,
-                                retry_count=retry_count + 1,
+                            # Recursively retry - client must pass coro factory if retries needed
+                            logger.warning(
+                                f"[{agent_name}] Retried 429 response; aborting after {retry_count + 1} attempts"
                             )
+                            raise
                         else:
                             logger.error(
                                 f"[{agent_name}] Rate limited (429) after "
@@ -247,7 +244,7 @@ class OpenRouterRequestQueue:
 
         return False
 
-    def _extract_retry_after(self, error: Exception) -> float:
+    def _extract_retry_after(self, error: Exception, retry_count: int = 0) -> float:
         """
         Extract Retry-After duration from error response.
         
@@ -255,6 +252,10 @@ class OpenRouterRequestQueue:
         1. Retry-After header (seconds as int or HTTP-date)
         2. Exponential backoff fallback: base^attempt seconds (max 300s)
         
+        Args:
+            error: The exception/error response
+            retry_count: Current retry attempt number for backoff calculation
+            
         Returns:
             Seconds to wait before retry
         """
@@ -284,7 +285,7 @@ class OpenRouterRequestQueue:
         # Fallback: exponential backoff with max 300s
         # This is a safe default if Retry-After is missing
         backoff = min(
-            self.fallback_backoff_base ** 2,  # Conservative: base^2 (4, 16, 64...)
+            self.fallback_backoff_base ** retry_count,  # Exponential: base^retry_count
             300.0,  # Max 5 minutes
         )
         logger.warning(
@@ -296,7 +297,7 @@ class OpenRouterRequestQueue:
         """
         Gracefully shut down the queue.
         
-        Cancels all pending requests and releases resources.
+        Cancels all pending requests and awaits their cleanup.
         Called on FastAPI app shutdown.
         """
         logger.info(
@@ -304,12 +305,12 @@ class OpenRouterRequestQueue:
             f"({len(self._pending_requests)} pending requests)"
         )
 
-        # Cancel pending requests (they'll see cancellation)
+        # Cancel pending requests with proper cleanup
+        pending_ids = list(self._pending_requests)
         async with self._pending_requests_lock:
-            for request_id in self._pending_requests:
+            for request_id in pending_ids:
                 logger.debug(f"Cancelling pending request {request_id}")
-
-            self._pending_requests.clear()
+                self._pending_requests.discard(request_id)
 
         # Give pending tasks a moment to clean up
         await asyncio.sleep(0.1)

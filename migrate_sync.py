@@ -33,11 +33,12 @@ def apply_migration():
         engine = create_engine(db_url, connect_args={"connect_timeout": 10})
         
         with engine.begin() as conn:
-            # Check if columns already exist
+            # Check if columns already exist (restrict to public schema)
             check_sql = text("""
                 SELECT EXISTS (
                     SELECT 1 FROM information_schema.columns 
-                    WHERE table_name = 'research_tasks' 
+                    WHERE table_schema = 'public'
+                    AND table_name = 'research_tasks' 
                     AND column_name = 'last_heartbeat'
                 )
             """)

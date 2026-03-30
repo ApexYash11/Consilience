@@ -45,8 +45,9 @@ async def planner_node(state: ResearchState) -> ResearchState:
     Plan research with automatic retry on failures.
     """
 
-    # Inject request queue into agent for coordinated rate limiting
-    inject_queue_to_agent(_planner)
+    # Inject request queue into agent for coordinated rate limiting (idempotent)
+    if not _planner.request_queue:  # Only inject if not already set
+        inject_queue_to_agent(_planner)
 
     agent_name = "planner"
     agent_type = "planning"

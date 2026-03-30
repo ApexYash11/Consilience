@@ -6,8 +6,7 @@ into agents without modifying orchestrator signatures.
 """
 
 import logging
-from typing import Optional, List
-from fastapi import FastAPI
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 

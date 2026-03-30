@@ -98,27 +98,35 @@ export function useResearchTasks(page: number = 1, pageSize: number = 10) {
     }
   }, [page, pageSize]);
 
+  // Helper: Fetch with proper URL encoding
+  const fetchWithAuth = useCallback(async (url: string, init?: RequestInit): Promise<Response> => {
+    const token = localStorage.getItem("consilience_access_token");
+    if (!token) {
+      throw new Error("No authentication token found");
+    }
+    return fetch(url, {
+      ...init,
+      headers: {
+        ...init?.headers,
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+    });
+  }, []);
+
   // Problem 5: Task cancellation/deletion with timeout and AbortController
   const cancelTask = useCallback(async (taskId: string, timeoutMs: number = 10000): Promise<void> => {
     try {
-      const token = localStorage.getItem("consilience_access_token");
-      if (!token) {
-        throw new Error("No authentication token found");
-      }
-
       // Create AbortController with timeout for the cancel request
       const abortController = new AbortController();
       const timeoutId = setTimeout(() => abortController.abort(), timeoutMs);
 
       try {
-        const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_BASE_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/research/${taskId}/cancel`,
+        const encodedTaskId = encodeURIComponent(taskId);
+        const response = await fetchWithAuth(
+          `${process.env.NEXT_PUBLIC_API_BASE_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/research/${encodedTaskId}/cancel`,
           {
             method: "POST",
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
             signal: abortController.signal,
           }
         );
@@ -141,52 +149,40 @@ export function useResearchTasks(page: number = 1, pageSize: number = 10) {
       }
       throw err;
     }
-  }, [fetchTasks]);
+  }, [fetchWithAuth, fetchTasks]);
 
   // Problem 5: Task deletion with timeout and AbortController
   const deleteTask = useCallback(async (taskId: string, timeoutMs: number = 10000): Promise<void> => {
+    // Create AbortController with timeout for the delete request
+    const abortController = new AbortController();
+    const timeoutId = setTimeout(() => abortController.abort(), timeoutMs);
+
     try {
-      const token = localStorage.getItem("consilience_access_token");
-      if (!token) {
-        throw new Error("No authentication token found");
-      }
-
-      // Create AbortController with timeout for the delete request
-      const abortController = new AbortController();
-      const timeoutId = setTimeout(() => abortController.abort(), timeoutMs);
-
-      try {
-        const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_BASE_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/research/${taskId}`,
-          {
-            method: "DELETE",
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-            signal: abortController.signal,
-          }
-        );
-
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          throw new Error(`Failed to delete task: ${response.statusText}`);
+      const encodedTaskId = encodeURIComponent(taskId);
+      const response = await fetchWithAuth(
+        `${process.env.NEXT_PUBLIC_API_BASE_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/research/${encodedTaskId}`,
+        {
+          method: "DELETE",
+          signal: abortController.signal,
         }
+      );
 
-        // Refresh the task list after deletion
-        await fetchTasks();
-      } catch (err) {
-        clearTimeout(timeoutId);
-        throw err;
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`Failed to delete task: ${response.statusText}`);
       }
+
+      // Refresh the task list after deletion
+      await fetchTasks();
     } catch (err) {
+      clearTimeout(timeoutId);
       if (err instanceof Error && err.name === 'AbortError') {
         throw new Error("Delete request timed out");
       }
       throw err;
     }
-  }, [fetchTasks]);
+  }, [fetchWithAuth, fetchTasks]);
 
   useEffect(() => {
     isMountedRef.current = true;

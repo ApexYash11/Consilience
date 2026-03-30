@@ -83,7 +83,7 @@ export default function ResearchPage() {
         clearTimeout(timeoutId)
       }
     } catch (err) {
-      // Problem 5: Handle abort errors gracefully
+      // Handle abort errors from the DELETE request (not from refetch)
       if (err instanceof Error && err.name === 'AbortError') {
         alert("Delete request timed out. Please try again.")
         setDeletingId(null)

@@ -154,7 +154,7 @@ async def _persist_metadata_to_db(
             logger.info(
                 f"Persisting metadata for task {task_id}: "
                 f"step={current_step}, sources={len(sources)}, "
-                f"tokens={tokens_used}, cost=${cost:.4f}, model={model}"
+                f"tokens={tokens}, cost=${cost:.4f}, model={model}"
             )
             
             # Update task with current progress
@@ -1033,8 +1033,9 @@ async def delete_research_task(
                     f"Background task {task_uuid} did not complete within 30s timeout. "
                     f"Task status: {task.status}. Proceeding with record update."
                 )
-                # Don't delete if still marked as RUNNING - just update to CANCELLED
-                if task.status == TaskStatus.RUNNING:
+                # Don't delete if still marked as RUNNING - normalize string comparison
+                task_status_str = task.status.value if hasattr(task.status, 'value') else str(task.status)
+                if task_status_str == TaskStatus.RUNNING.value:
                     await ResearchService.update_research_task(
                         db, task_uuid, status=TaskStatus.FAILED,
                         error_message="Task cancelled but did not terminate cleanly"
