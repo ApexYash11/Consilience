@@ -32,6 +32,7 @@ from ...services.openrouter_client import extract_token_usage
 from ...services.research_service import ResearchService
 from ...agents.base_agent import BaseAgent
 from ...database.connection import AsyncSessionLocal
+from ...services.agent_queue_manager import inject_queue_to_agent
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,9 @@ async def planner_node(state: ResearchState) -> ResearchState:
     """
     Plan research with automatic retry on failures.
     """
+
+    # Inject request queue into agent for coordinated rate limiting
+    inject_queue_to_agent(_planner)
 
     agent_name = "planner"
     agent_type = "planning"

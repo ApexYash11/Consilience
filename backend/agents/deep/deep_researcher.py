@@ -33,6 +33,7 @@ from ...services.openrouter_client import extract_token_usage
 from ...services.research_service import ResearchService
 from ...agents.base_agent import BaseAgent
 from ...database.connection import AsyncSessionLocal
+from ...services.agent_queue_manager import inject_queue_to_agent
 from ...tools.file_system import (
     write_file,
     read_file,
@@ -151,6 +152,9 @@ async def deep_researcher_node(
     4. Cross-references sources and identifies contradictions
     5. Tracks cost and tokens with enhanced reporting
     """
+
+    # Inject request queue into agent for coordinated rate limiting
+    inject_queue_to_agent(_deep_researcher)
 
     agent_name = "deep_researcher"
     agent_type = "research_deep"

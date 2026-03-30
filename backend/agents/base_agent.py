@@ -19,9 +19,11 @@ class BaseAgent:
         agent_name: str,
         agent_type: str,
         retry_config: Optional[RetryConfig] = None,
+        request_queue: Optional[Any] = None,
     ):
         self.agent_name = agent_name
         self.agent_type = agent_type
+        self.request_queue = request_queue  # Optional queue for coordinating LLM calls
 
         # Use provided config or create from settings
         self.retry_config = retry_config or RetryConfig(
@@ -41,6 +43,28 @@ class BaseAgent:
             ),
         )
 
+    def set_request_queue(self, queue: Optional[Any]) -> None:
+        """Inject request queue into agent (for lazy initialization)."""
+        self.request_queue = queue
+
+    def _get_available_request_queue(self) -> Optional[Any]:
+        """Get request queue from agent state or app context."""
+        # First check if agent has an injected queue
+        if self.request_queue:
+            return self.request_queue
+        
+        # Try to get from FastAPI app state if available
+        try:
+            from fastapi import Request
+            from starlette.requests import Request as StarletteRequest
+            # This won't work directly in task context, but we can try app state
+            # via contextvars if needed
+            pass
+        except Exception:
+            pass
+        
+        return None
+
     async def call_llm_with_retry(
         self,
         llm_func: Callable,
@@ -50,6 +74,9 @@ class BaseAgent:
     ) -> Any:
         """
         Call LLM function with timeout, retry, and circuit breaker.
+        
+        If request_queue is available, routes through the queue for coordinated
+        rate limiting and concurrency control. Otherwise uses local retry logic.
 
         Usage:
             response = await agent.call_llm_with_retry(
@@ -59,6 +86,27 @@ class BaseAgent:
             )
         """
 
+        # Get available queue
+        queue = self._get_available_request_queue()
+
+        # If queue is available, route through it for coordinated rate limiting
+        if queue:
+            async def llm_call():
+                """Create a coroutine for the queue to execute."""
+                return await llm_func(*args, **kwargs)
+
+            logger.debug(
+                f"{self.agent_name} routing LLM call through request queue "
+                f"(timeout={timeout_seconds}s)"
+            )
+
+            return await queue.submit(
+                llm_call(),
+                timeout_seconds=timeout_seconds,
+                agent_name=self.agent_name,
+            )
+
+        # Fallback: use local timeout + retry logic (backward compatibility)
         # Wrap LLM call with timeout
         async def llm_call_with_timeout():
             try:

@@ -14,6 +14,7 @@ from ..dependencies import get_db, get_current_user, require_paid_tier, check_st
 from ...models.research import ResearchState, ResearchDepth, TaskStatus
 from ...services.research_service import ResearchService
 from ...services.observability import safe_trace_async, safe_get_current_run_id, merge_metadata, log_metric
+from ...services.task_recovery_service import TaskRecoveryService
 from ...orchestrator.standard_orchestrator import run_research, set_agent_action_logger, set_metadata_persistence_callback
 from ...orchestrator.deep_orchestrator import (
     run_deep_research,
@@ -133,7 +134,7 @@ async def _persist_metadata_to_db(
     sources: list,
     tokens_used: int = 0,
     cost: float = 0.0,
-    model: str = "claude-3-opus",
+    model: str = "openrouter-llm",
 ):
     """
     Callback for persisting research metadata updates during execution.
@@ -147,8 +148,14 @@ async def _persist_metadata_to_db(
                 "current_step": current_step,
                 "sources": sources,
                 "model": model,
-                "cost_per_token": 0.000006,  # Default cost per token for Claude
+                "cost_per_token": cost / tokens if tokens > 0 else 0.0,  # Calculate from actual values
             }
+            
+            logger.info(
+                f"Persisting metadata for task {task_id}: "
+                f"step={current_step}, sources={len(sources)}, "
+                f"tokens={tokens_used}, cost=${cost:.4f}, model={model}"
+            )
             
             # Update task with current progress
             await ResearchService.update_research_task(
@@ -159,7 +166,7 @@ async def _persist_metadata_to_db(
                 metadata_json=metadata,
             )
     except Exception as e:
-        logger.warning(f"Failed to persist metadata for task {task_id}: {e}")
+        logger.error(f"Failed to persist metadata for task {task_id}: {e}", exc_info=True)
 
 
 async def _execute_research_background(
@@ -187,6 +194,10 @@ async def _execute_research_background(
             task_id=task_id,
             status=TaskStatus.RUNNING,
         )
+        
+        # Update heartbeat to signal task is alive (Problem 2: Orphaned Tasks)
+        await TaskRecoveryService.update_heartbeat(str(task_id))
+        
         logger.info(f"Starting research workflow for task {task_id}")
 
         # Fetch task record for metadata
@@ -252,6 +263,9 @@ async def _execute_research_background(
             {"langsmith_run_id": run_id} if run_id else {},
         )
         
+        # Update heartbeat one final time (Problem 2: Orphaned Tasks)
+        await TaskRecoveryService.update_heartbeat(str(task_id))
+        
         await ResearchService.update_research_task(
             session=session,
             task_id=task_id,
@@ -289,6 +303,9 @@ async def _execute_research_background(
             "research_failed",
             {"task_id": str(task_id), "error": str(e)[:100]},
         )
+        
+        # Update heartbeat before marking as failed (Problem 2: Orphaned Tasks)
+        await TaskRecoveryService.update_heartbeat(str(task_id))
         
         await ResearchService.update_research_task(
             session=session,
@@ -558,9 +575,19 @@ async def get_research_status(
         # Extract current step from metadata
         current_step = metadata.get("current_step")
         
-        # Extract model and cost info from metadata
-        model = metadata.get("model", "claude-3-opus")
-        cost_per_token = metadata.get("cost_per_token", 0.000006)
+        # Extract model from metadata if set during execution, otherwise use from task config
+        # Default to "openrouter-llm" for now since we're using OpenRouter
+        model = metadata.get("model", "openrouter-llm")
+        
+        # Get actual tokens and costs from task (these are updated during execution)
+        tokens = task.tokens_used or 0  # type: ignore
+        actual_cost = task.actual_cost_usd or 0.0  # type: ignore
+        estimated_cost = task.estimated_cost_usd or 0.0  # type: ignore
+        
+        # Calculate cost per token if we have token data
+        cost_per_token = 0.0
+        if tokens > 0 and actual_cost > 0:
+            cost_per_token = actual_cost / tokens
         
         # Calculate estimated remaining time (simple heuristic)
         estimated_remaining = None
@@ -580,10 +607,10 @@ async def get_research_status(
             progress=progress,
             currentStep=current_step,
             sources=sources,
-            tokens=task.tokens_used or 0,  # type: ignore
-            costPerToken=cost_per_token,
+            tokens=tokens,  # Use actual tokens from database
+            costPerToken=cost_per_token,  # Calculate from actual values
             estimatedRemaining=estimated_remaining,
-            model=model,
+            model=model,  # Use metadata model or default to openrouter-llm
             error=error,
         )
 
@@ -832,16 +859,28 @@ async def get_deep_research_status(
         # Extract sources and current step from metadata for deep research
         metadata = task.metadata_json or {}  # type: ignore
         
+        # Get model from metadata or default to openrouter-llm
+        model = metadata.get("model", "openrouter-llm") if isinstance(metadata, dict) else "openrouter-llm"
+        
+        # Get actual tokens and costs from task
+        tokens = task.tokens_used or 0  # type: ignore
+        actual_cost = task.actual_cost_usd or 0.0  # type: ignore
+        
+        # Calculate cost per token if we have token data
+        cost_per_token = 0.0
+        if tokens > 0 and actual_cost > 0:
+            cost_per_token = actual_cost / tokens
+        
         return ResearchStatusResponse(
             id=str(task.id),
             status=task_status.value if isinstance(task_status, TaskStatus) else str(task_status),
             progress=progress,
             currentStep=metadata.get("current_step") if isinstance(metadata, dict) else None,
             sources=metadata.get("sources", []) if isinstance(metadata, dict) else [],
-            tokens=task.tokens_used or 0,  # type: ignore
-            costPerToken=0.000006,
+            tokens=tokens,  # Use actual tokens from database
+            costPerToken=cost_per_token,  # Calculate from actual values
             estimatedRemaining=None,
-            model="claude-3-opus",
+            model=model,  # Use metadata model or default to openrouter-llm
             error=task.error_message if task.status == TaskStatus.FAILED else None,  # type: ignore
         )
 
@@ -981,15 +1020,25 @@ async def delete_research_task(
         if str(task_uuid) in _running_tasks:  # type: ignore
             background_task = _running_tasks[str(task_uuid)]  # type: ignore
             if not background_task.done():
+                logger.info(f"Cancelling background task {task_uuid}")
                 background_task.cancel()
             
             # Wait for task cancellation with timeout to prevent hanging
             try:
-                await asyncio.wait_for(background_task, timeout=5.0)
+                await asyncio.wait_for(background_task, timeout=30.0)  # Increased from 5s to 30s
             except asyncio.CancelledError:
                 logger.info(f"Background task {task_uuid} cancelled successfully")
             except asyncio.TimeoutError:
-                logger.warning(f"Background task {task_uuid} did not complete within timeout, proceeding with deletion")
+                logger.warning(
+                    f"Background task {task_uuid} did not complete within 30s timeout. "
+                    f"Task status: {task.status}. Proceeding with record update."
+                )
+                # Don't delete if still marked as RUNNING - just update to CANCELLED
+                if task.status == TaskStatus.RUNNING:
+                    await ResearchService.update_research_task(
+                        db, task_uuid, status=TaskStatus.FAILED,
+                        error_message="Task cancelled but did not terminate cleanly"
+                    )
             except Exception as e:
                 logger.error(f"Error waiting for task {task_uuid} cancellation: {str(e)}")
             finally:
@@ -998,9 +1047,12 @@ async def delete_research_task(
                 _running_tasks.pop(str(task_uuid), None)  # type: ignore
 
         # Delete task from database
-        await ResearchService.delete_research_task(db, task_uuid)
-
-        logger.info(f"Deleted research task {task_id} for user {user.user_id}")  # type: ignore
+        try:
+            await ResearchService.delete_research_task(db, task_uuid)
+            logger.info(f"Deleted research task {task_id} for user {user.user_id}")  # type: ignore
+        except Exception as delete_err:
+            logger.error(f"Failed to delete task {task_id}: {delete_err}", exc_info=True)
+            raise HTTPException(status_code=500, detail="Failed to delete task")
 
         return {
             "success": True,
@@ -1045,6 +1097,10 @@ async def _execute_deep_research_background(
             task_id=task_id,
             status=TaskStatus.RUNNING,
         )
+        
+        # Update heartbeat to signal task is alive (Problem 2: Orphaned Tasks)
+        await TaskRecoveryService.update_heartbeat(str(task_id))
+        
         logger.info(f"Starting deep research workflow for task {task_id}")
 
         # Fetch task record for metadata
@@ -1060,6 +1116,22 @@ async def _execute_deep_research_background(
                 user_id = "unknown"
         if task_record:
             research_depth = getattr(task_record, 'research_depth', 'deep') or 'deep'
+
+        # Problem 7: Deep Research Quota Re-Check
+        # Validate quota again before starting (in case other tasks consumed quota while pending)
+        try:
+            if user_id != "unknown":
+                await CostService().check_quota_mid_execution(user_id, ResearchDepth.DEEP)
+                logger.info(f"Quota check passed for task {task_id} before deep research")
+        except ValueError as quota_err:
+            logger.warning(f"Quota check failed for task {task_id}: {quota_err}")
+            await ResearchService.update_research_task(
+                session=session,
+                task_id=task_id,
+                status=TaskStatus.FAILED,
+                error_message=f"Quota exhausted before task execution: {str(quota_err)}",
+            )
+            raise
 
         # Prepare trace metadata
         trace_metadata = {
@@ -1112,6 +1184,9 @@ async def _execute_deep_research_background(
             {"langsmith_run_id": run_id} if run_id else {},
         )
         
+        # Update heartbeat one final time (Problem 2: Orphaned Tasks)
+        await TaskRecoveryService.update_heartbeat(str(task_id))
+        
         await ResearchService.update_research_task(
             session=session,
             task_id=task_id,
@@ -1149,6 +1224,9 @@ async def _execute_deep_research_background(
             "deep_research_failed",
             {"task_id": str(task_id), "error": str(e)[:100]},
         )
+        
+        # Update heartbeat before marking as failed (Problem 2: Orphaned Tasks)
+        await TaskRecoveryService.update_heartbeat(str(task_id))
         
         await ResearchService.update_research_task(
             session=session,

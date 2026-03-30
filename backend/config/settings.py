@@ -140,6 +140,12 @@ class RetryConfig(BaseSettings):
     CIRCUIT_BREAKER_FAILURE_THRESHOLD: int = 5  # Fail after N consecutive errors
     CIRCUIT_BREAKER_RESET_TIMEOUT_SECONDS: int = 300  # Try again after 5 min
 
+    # OpenRouter Request Queue (for coordinating LLM API calls)
+    OPENROUTER_QUEUE_MAX_CONCURRENCY: int = 5  # Max simultaneous API calls
+    OPENROUTER_QUEUE_CALLS_PER_MINUTE: int = 100  # Rate limit threshold
+    OPENROUTER_QUEUE_MAX_RETRIES_ON_429: int = 3  # Retry attempts on rate limit
+    OPENROUTER_QUEUE_FALLBACK_BACKOFF_BASE: float = 2.0  # Base for exponential backoff
+
     model_config = SettingsConfigDict(env_file=".env", env_prefix="CONSILIENCE_", extra="ignore")
 
 

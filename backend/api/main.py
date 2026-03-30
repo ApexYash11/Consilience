@@ -14,6 +14,10 @@ import logging
 from ..core.config import get_settings
 from ..database.connection import init_async_db, close_db, get_async_session
 from .dependencies import get_optional_user
+from ..services.openrouter_request_queue import OpenRouterRequestQueue
+from ..services.agent_queue_manager import set_global_request_queue
+from ..services.task_recovery_service import TaskRecoveryService
+from ..config.settings import retry_config
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -138,6 +142,36 @@ async def startup_event():
         logger.error(f"Failed to initialize database: {str(e)}")
         raise
 
+    # Initialize OpenRouter request queue for LLM call coordination
+    try:
+        request_queue = OpenRouterRequestQueue(
+            max_concurrent=retry_config.OPENROUTER_QUEUE_MAX_CONCURRENCY,
+            calls_per_minute=retry_config.OPENROUTER_QUEUE_CALLS_PER_MINUTE,
+            max_retries_on_429=retry_config.OPENROUTER_QUEUE_MAX_RETRIES_ON_429,
+            fallback_backoff_base=retry_config.OPENROUTER_QUEUE_FALLBACK_BACKOFF_BASE,
+        )
+        app.state.openrouter_request_queue = request_queue
+        
+        # Set global queue for all agents to access
+        set_global_request_queue(request_queue)
+        
+        logger.info(
+            f"OpenRouter request queue initialized: "
+            f"max_concurrent={retry_config.OPENROUTER_QUEUE_MAX_CONCURRENCY}, "
+            f"calls_per_minute={retry_config.OPENROUTER_QUEUE_CALLS_PER_MINUTE}"
+        )
+    except Exception as e:
+        logger.error(f"Failed to initialize OpenRouter request queue: {str(e)}")
+        raise
+
+    # Initialize task recovery service (Problem 2: Orphaned Tasks)
+    try:
+        await TaskRecoveryService.startup()
+        logger.info("Task recovery service started (heartbeat and orphan detection)")
+    except Exception as e:
+        logger.error(f"Failed to initialize task recovery service: {str(e)}")
+        raise
+
     # Run cleanup of old research context directories
     try:
         from ..services.cleanup_service import cleanup_old_research_context
@@ -153,6 +187,22 @@ async def startup_event():
 async def shutdown_event():
     """Clean up on shutdown."""
     logger.info("Shutting down...")
+    
+    # Shut down task recovery service
+    try:
+        await TaskRecoveryService.shutdown()
+        logger.info("Task recovery service shut down")
+    except Exception as e:
+        logger.warning(f"Error during task recovery service shutdown: {str(e)}")
+    
+    # Shut down OpenRouter request queue
+    try:
+        if hasattr(app.state, "openrouter_request_queue"):
+            await app.state.openrouter_request_queue.shutdown()
+            logger.info("OpenRouter request queue shut down")
+    except Exception as e:
+        logger.warning(f"Error during request queue shutdown: {str(e)}")
+    
     await close_db()
 
 
