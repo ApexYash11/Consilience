@@ -35,6 +35,10 @@ class TaskRecoveryService:
     _heartbeat_task: Optional[asyncio.Task] = None
     _recovery_sweep_task: Optional[asyncio.Task] = None
     _is_running = False
+    
+    # Track which tasks this server instance is actively processing
+    # Only we refresh heartbeats for these; orphan detection handles stale ones
+    _active_task_ids: set = set()  # Set of task IDs currently being processed
 
     @classmethod
     async def startup(cls) -> None:
@@ -57,9 +61,12 @@ class TaskRecoveryService:
 
     @classmethod
     async def shutdown(cls) -> None:
-        """Called on app shutdown. Cancels and awaits background tasks."""
+        """Called on app shutdown. Clears active task tracking and cancels background tasks."""
         logger.info("TaskRecoveryService: Shutting down")
         cls._is_running = False
+        
+        # Clear active task tracking (on server shutdown, no more tasks are "active")
+        cls._active_task_ids.clear()
         
         # Cancel and wait for background tasks to finish
         tasks_to_cancel = []
@@ -88,6 +95,9 @@ class TaskRecoveryService:
         Called periodically by agents/orchestrators to signal task is still alive.
         """
         try:
+            # Track this task as active (we're processing it)
+            cls._active_task_ids.add(task_id)
+            
             async with AsyncSessionLocal() as session:
                 await session.execute(
                     update(ResearchTaskDB)
@@ -97,6 +107,15 @@ class TaskRecoveryService:
                 await session.commit()
         except Exception as e:
             logger.error(f"Failed to update heartbeat for task {task_id}: {e}")
+
+    @classmethod
+    def mark_task_completed(cls, task_id: str) -> None:
+        """
+        Mark a task as completed/no longer active on this server.
+        Call when task finishes (success or failure) to stop tracking it.
+        """
+        cls._active_task_ids.discard(task_id)
+        logger.debug(f"TaskRecoveryService: Removed task {task_id} from active tracking")
 
     @classmethod
     async def _initial_recovery_sweep(cls) -> None:
@@ -137,22 +156,30 @@ class TaskRecoveryService:
     @classmethod
     async def _background_heartbeat_loop(cls) -> None:
         """
-        Background task that periodically refreshes heartbeats for all RUNNING tasks.
-        This ensures active tasks don't get marked as orphaned if update_heartbeat() calls are missed.
+        Background task that periodically refreshes heartbeats for actively tracked tasks.
+        Only refreshes tasks this server is actually processing to allow orphan detection.
+        Relies on agents calling update_heartbeat() for worker-driven heartbeats.
         """
         while cls._is_running:
             try:
                 await asyncio.sleep(cls.HEARTBEAT_INTERVAL_SECONDS)
                 
-                # Refresh heartbeat for RUNNING tasks (fallback if update_heartbeat() calls are missing)
-                async with AsyncSessionLocal() as session:
-                    await session.execute(
-                        update(ResearchTaskDB)
-                        .where(ResearchTaskDB.status == TaskStatus.RUNNING)
-                        .values(last_heartbeat=datetime.utcnow())
-                    )
-                    await session.commit()
-                    logger.debug("TaskRecoveryService: Heartbeat loop refreshed active tasks")
+                # Only refresh heartbeats for tasks we're actively tracking
+                # This allows orphaned tasks (not being worked on) to be detected
+                if cls._active_task_ids:
+                    async with AsyncSessionLocal() as session:
+                        await session.execute(
+                            update(ResearchTaskDB)
+                            .where(
+                                (ResearchTaskDB.status == TaskStatus.RUNNING) &
+                                (ResearchTaskDB.id.in_(cls._active_task_ids))
+                            )
+                            .values(last_heartbeat=datetime.utcnow())
+                        )
+                        await session.commit()
+                        logger.debug(
+                            f"TaskRecoveryService: Heartbeat loop refreshed {len(cls._active_task_ids)} active tasks"
+                        )
             except asyncio.CancelledError:
                 break
             except Exception as e:

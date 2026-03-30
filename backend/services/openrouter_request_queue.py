@@ -69,6 +69,9 @@ class OpenRouterRequestQueue:
         # Pending requests for graceful shutdown
         self._pending_requests: set = set()
         self._pending_requests_lock = asyncio.Lock()
+        
+        # Track asyncio.Tasks for proper cancellation on shutdown
+        self._pending_tasks: dict = {}  # request_id -> asyncio.Task
 
         logger.info(
             f"OpenRouterRequestQueue initialized: "
@@ -124,16 +127,24 @@ class OpenRouterRequestQueue:
                     self._call_times.append(time.time())
 
                 try:
-                    # Step 3: Execute with timeout
+                    # Step 3: Execute with timeout (wrap in task for proper cancellation)
                     logger.debug(
                         f"[{agent_name}] Starting request (task_id={task_id}, "
                         f"pending={len(self._pending_requests)})"
                     )
 
-                    result = await asyncio.wait_for(coro, timeout=timeout_seconds)
-
-                    logger.debug(f"[{agent_name}] Request completed successfully")
-                    return result
+                    # Create task so it can be cancelled during shutdown
+                    current_task = asyncio.create_task(coro)
+                    async with self._pending_requests_lock:
+                        self._pending_tasks[request_id] = current_task
+                    
+                    try:
+                        result = await asyncio.wait_for(current_task, timeout=timeout_seconds)
+                        logger.debug(f"[{agent_name}] Request completed successfully")
+                        return result
+                    finally:
+                        async with self._pending_requests_lock:
+                            self._pending_tasks.pop(request_id, None)
 
                 except asyncio.TimeoutError as e:
                     logger.warning(
@@ -297,7 +308,7 @@ class OpenRouterRequestQueue:
         """
         Gracefully shut down the queue.
         
-        Cancels all pending requests and awaits their cleanup.
+        Cancels all pending requests/tasks and awaits their cleanup.
         Called on FastAPI app shutdown.
         """
         logger.info(
@@ -305,12 +316,18 @@ class OpenRouterRequestQueue:
             f"({len(self._pending_requests)} pending requests)"
         )
 
-        # Cancel pending requests with proper cleanup
-        pending_ids = list(self._pending_requests)
+        # Cancel pending tasks with proper cleanup (inside critical section)
         async with self._pending_requests_lock:
+            pending_ids = list(self._pending_requests)
             for request_id in pending_ids:
                 logger.debug(f"Cancelling pending request {request_id}")
                 self._pending_requests.discard(request_id)
+                
+                # Cancel associated task if it exists
+                task = self._pending_tasks.pop(request_id, None)
+                if task and isinstance(task, asyncio.Task) and not task.done():
+                    task.cancel()
+                    logger.debug(f"Task for request {request_id} cancelled")
 
         # Give pending tasks a moment to clean up
         await asyncio.sleep(0.1)

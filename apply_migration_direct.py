@@ -8,6 +8,7 @@ import asyncio
 import os
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 # Load environment variables from .env file if it exists
 from dotenv import load_dotenv
@@ -34,8 +35,23 @@ async def apply_migration():
         print(f"Available env vars: {', '.join([k for k in os.environ.keys() if 'DATABASE' in k or 'DB' in k])}")
         return False
     
-    # Redact credentials from logs
-    redacted_url = db_url.split('://')[0] + "://***:***@" + db_url.split('@')[1] if '@' in db_url else db_url[:50]
+    # Redact credentials from logs using proper URL parsing
+    try:
+        parsed = urlparse(db_url)
+        if parsed.username or parsed.password:
+            # Rebuild URL with masked credentials
+            netloc = f"***:***@{parsed.hostname}"
+            if parsed.port:
+                netloc += f":{parsed.port}"
+            redacted_url = f"{parsed.scheme}://{netloc}{parsed.path}"
+            if parsed.query:
+                redacted_url += f"?{parsed.query}"
+        else:
+            # No credentials to redact
+            redacted_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}" if parsed.netloc else db_url[:50]
+    except Exception:
+        # Fallback if URL parsing fails
+        redacted_url = db_url[:50] if len(db_url) > 50 else db_url
     print(f"Connecting to database: {redacted_url}...")
     
     engine = None
