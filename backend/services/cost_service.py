@@ -66,6 +66,19 @@ class CostService:
                 "Upgrade your plan or wait for the next billing cycle."
             )
 
+    async def check_quota_mid_execution(self, user_id: str, depth: ResearchDepth) -> None:
+        """
+        Problem 7: Deep Research Quota Re-Check
+        
+        Raise ValueError if the user has exhausted their monthly quota.
+        Called mid-execution (inside background task) to prevent deep research
+        from consuming resources after quota is spent.
+        
+        This is a second check after the initial quota check at task creation.
+        Useful for long-running deep research tasks that may exceed quota mid-run.
+        """
+        return await self.check_quota(user_id, depth)
+
     # ------------------------------------------------------------------
     # Usage recording (called after a task completes)
     # ------------------------------------------------------------------

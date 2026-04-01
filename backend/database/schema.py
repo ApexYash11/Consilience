@@ -211,6 +211,10 @@ class ResearchTaskDB(Base):
     metadata_json = Column(JSON)
     final_state_json = Column(JSON)
     
+    # Task recovery (Problem 2: Orphaned Tasks)
+    last_heartbeat = Column(DateTime, nullable=True, index=True)
+    failure_reason = Column(Text, nullable=True)
+    
     # Relationships
     user = relationship("UserDB", back_populates="tasks")
     agent_actions = relationship("AgentActionDB", back_populates="task")

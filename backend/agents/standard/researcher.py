@@ -32,6 +32,7 @@ from ...utils.cost_estimator import estimate_cost_from_response
 from ...services.openrouter_client import extract_token_usage
 from ...services.research_service import ResearchService
 from ...database.connection import AsyncSessionLocal
+from ...services.llm_call_helper import call_llm_async
 
 logger = logging.getLogger(__name__)
 
@@ -74,9 +75,14 @@ async def researcher_node(
                 **OPENROUTER_CONFIG,
             )
 
-            # Call LLM to find sources
+            # Call LLM to find sources (routed through request queue)
             prompt_text = f"Find 3 credible academic sources on: {query}"
-            response = await llm.ainvoke([HumanMessage(content=prompt_text)])
+            response = await call_llm_async(
+                llm,
+                [HumanMessage(content=prompt_text)],
+                timeout_seconds=60.0,
+                agent_name=researcher_id,
+            )
 
             # Extract tokens and costs
             tokens = await extract_token_usage(response)

@@ -77,22 +77,39 @@ export default function ResearchStatusPage() {
         throw new AuthenticationError("Authentication token not found");
       }
 
-      const apiUrl = getApiUrl();
-      const response = await fetch(`${apiUrl}/api/research/${taskId}`, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
+      // Problem 5: Frontend Race Conditions - Use AbortController with timeout
+      const abortController = new AbortController();
+      const timeoutMs = 10000; // 10 second timeout for cancel request
+      const timeoutId = setTimeout(() => abortController.abort(), timeoutMs);
 
-      if (!response.ok) {
-        throw new Error("Failed to cancel research");
+      try {
+        const apiUrl = getApiUrl();
+        const response = await fetch(`${apiUrl}/api/research/${taskId}`, {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          signal: abortController.signal, // Problem 5: Pass abort signal
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to cancel research");
+        }
+
+        // Redirect back to research list
+        router.push("/dashboard/research");
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    } catch (err) {
+      // Problem 5: Handle abort errors gracefully
+      if (err instanceof Error && err.name === 'AbortError') {
+        alert("Cancel request timed out. Please try again.");
+        setIsCancelling(false);
+        return;
       }
 
-      // Redirect back to research list
-      router.push("/dashboard/research");
-    } catch (err) {
       console.error("Failed to cancel research:", err);
       
       // Handle authentication errors with redirect

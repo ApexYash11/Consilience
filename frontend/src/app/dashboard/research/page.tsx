@@ -52,27 +52,44 @@ export default function ResearchPage() {
         throw new AuthenticationError("Authentication token not found")
       }
 
-      const apiUrl = getApiUrl()
-      const response = await fetch(`${apiUrl}/api/research/${taskId}`, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      })
+      // Problem 5: Frontend Race Conditions - Use AbortController with timeout
+      const abortController = new AbortController()
+      const timeoutMs = 10000 // 10 second timeout for delete request
+      const timeoutId = setTimeout(() => abortController.abort(), timeoutMs)
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({
-          detail: "Unknown error occurred",
-        }))
-        const errorMessage = errorData.detail || errorData.message || "Unknown error occurred"
-        alert(`Failed to delete task: ${errorMessage}`)
+      try {
+        const apiUrl = getApiUrl()
+        const response = await fetch(`${apiUrl}/api/research/${taskId}`, {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          signal: abortController.signal, // Problem 5: Pass abort signal
+        })
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({
+            detail: "Unknown error occurred",
+          }))
+          const errorMessage = errorData.detail || errorData.message || "Unknown error occurred"
+          alert(`Failed to delete task: ${errorMessage}`)
+          return
+        }
+
+        // Refresh the task list
+        await refetch()
+      } finally {
+        clearTimeout(timeoutId)
+      }
+    } catch (err) {
+      // Handle abort errors from the DELETE request (not from refetch)
+      if (err instanceof Error && err.name === 'AbortError') {
+        alert("Delete request timed out. Please try again.")
+        setDeletingId(null)
         return
       }
 
-      // Refresh the task list
-      await refetch()
-    } catch (err) {
       console.error("Delete error:", err)
       
       // Handle authentication errors with redirect

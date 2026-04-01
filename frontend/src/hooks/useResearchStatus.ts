@@ -61,11 +61,23 @@ export function useResearchStatus(taskId: string | null): UseResearchStatusRetur
   // Poll timeout ID for cleanup
   const timeoutIdRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Problem 5: Frontend Race Conditions - Add AbortController for cancellable requests
+  const abortControllerRef = useRef<AbortController | null>(null);
+
   const fetchStatus = useCallback(async (): Promise<ResearchStatus | null> => {
     if (!taskId) {
       setIsLoading(false);
       return null;
     }
+
+    // Problem 5: Cancel previous request if one is in flight
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
+    // Create a new AbortController for this fetch
+    abortControllerRef.current = new AbortController();
+    const signal = abortControllerRef.current.signal;
 
     // Prevent overlapping requests
     if (isFetchingRef.current) {
@@ -96,6 +108,7 @@ export function useResearchStatus(taskId: string | null): UseResearchStatusRetur
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
           },
+          signal, // Problem 5: Pass abort signal to fetch
         }
       );
 
@@ -159,6 +172,12 @@ export function useResearchStatus(taskId: string | null): UseResearchStatusRetur
       // Return the fetched data for use in promise callbacks
       return data;
     } catch (err) {
+      // Problem 5: Don't set error if request was aborted (this is expected behavior)
+      if (err instanceof Error && err.name === 'AbortError') {
+        // Request was cancelled - this is expected, don't treat as error
+        return null;
+      }
+
       if (isMountedRef.current) {
         const message = err instanceof Error ? err.message : "Unknown error occurred";
         setError(`Failed to fetch status: ${message}`);
@@ -211,6 +230,10 @@ export function useResearchStatus(taskId: string | null): UseResearchStatusRetur
       isMountedRef.current = false;
       if (timeoutIdRef.current) {
         clearTimeout(timeoutIdRef.current);
+      }
+      // Problem 5: Abort in-flight requests on unmount
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
       }
     };
   }, [fetchStatus]);
