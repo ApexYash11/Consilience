@@ -101,7 +101,7 @@ class BaseAgent:
             )
 
             return await queue.submit(
-                llm_call(),
+                llm_call,
                 timeout_seconds=timeout_seconds,
                 agent_name=self.agent_name,
             )

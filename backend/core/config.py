@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     app_name: str = "Consilience"
     app_version: str = "1.0.0"
     api_url: str = "http://localhost:8000"
-    frontend_url: str = "http://localhost:3000"
+    frontend_url: str = Field("http://localhost:3000", alias="FRONTEND_URL")
     
     # Dodo Payments
     dodo_api_key: Optional[str] = Field(None, alias="DODO_API_KEY")

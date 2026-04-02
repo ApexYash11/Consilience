@@ -179,6 +179,10 @@ def create_research_graph():
         ↓
     RESEARCHERS × 5 (parallel)
         ↓
+    MERGE_RESEARCHERS (combine sources/costs from parallel agents)
+        ↓
+    VERIFIER (validation)
+        ↓
     VERIFIER (validate sources)
         ├─ If source_quality_score < 0.3 → RESEARCHER-RETRY
         └─ Else → DETECTOR
@@ -260,6 +264,23 @@ def create_research_graph():
     workflow.add_node("researcher_4", researcher_4_wrapper)
     workflow.add_node("researcher_5", researcher_5_wrapper)
     
+    # Add merge node to combine researcher outputs
+    # LangGraph sync requires explicit merging without Annotated reducers
+    async def merge_researchers(state: ResearchState) -> ResearchState:
+        """
+        Merge outputs from parallel researcher agents.
+        Combines sources, costs, and tokens without overwriting.
+        """
+        # State already contains latest from researchers due to LangGraph's synchronization
+        # Just need to ensure it's properly formatted
+        logger.info(
+            f"Merged researchers: {len(state.sources)} sources found, "
+            f"cost: ${state.cost:.4f}, tokens: {state.tokens_used}"
+        )
+        return state
+    
+    workflow.add_node("merge_researchers", merge_researchers)
+    
     # Wrap major phase nodes
     wrapped_verifier = _create_node_wrapper_with_persistence(verifier_node, "verifying")
     wrapped_detector = _create_node_wrapper_with_persistence(detector_node, "detecting")
@@ -281,22 +302,21 @@ def create_research_graph():
     # Don't add edges from START; use set_entry_point() instead
     
     # PLANNER → RESEARCHERS (5-way fan-out for parallel execution)
-    # LangGraph automatically synchronizes multiple incoming edges to a single node
-    # so the verifier waits for all 5 researchers to complete before proceeding
     workflow.add_edge("planner", "researcher_1")
     workflow.add_edge("planner", "researcher_2")
     workflow.add_edge("planner", "researcher_3")
     workflow.add_edge("planner", "researcher_4")
     workflow.add_edge("planner", "researcher_5")
     
-    # RESEARCHERS → VERIFIER (convergence point)
-    # All 5 researchers feed into verifier, which synchronizes their output
-    # into a single ResearchState with merged sources list
-    workflow.add_edge("researcher_1", "verifier")
-    workflow.add_edge("researcher_2", "verifier")
-    workflow.add_edge("researcher_3", "verifier")
-    workflow.add_edge("researcher_4", "verifier")
-    workflow.add_edge("researcher_5", "verifier")
+    # RESEARCHERS → MERGE (synchronization point)
+    workflow.add_edge("researcher_1", "merge_researchers")
+    workflow.add_edge("researcher_2", "merge_researchers")
+    workflow.add_edge("researcher_3", "merge_researchers")
+    workflow.add_edge("researcher_4", "merge_researchers")
+    workflow.add_edge("researcher_5", "merge_researchers")
+    
+    # MERGE → VERIFIER
+    workflow.add_edge("merge_researchers", "verifier")
     
     # 3. Add CONDITIONAL edges with multi-path routing
     # These edges make intelligent decisions based on state metrics

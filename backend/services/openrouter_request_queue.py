@@ -22,7 +22,7 @@ import time
 from collections import deque
 from datetime import datetime, timedelta
 from typing import Any, Callable, Optional, Coroutine
-from uuid import UUID
+from uuid import UUID, uuid4
 
 logger = logging.getLogger(__name__)
 
