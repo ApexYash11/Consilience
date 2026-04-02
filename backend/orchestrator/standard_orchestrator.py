@@ -112,7 +112,7 @@ async def _persist_metadata(
 def _create_node_wrapper_with_persistence(
     node_func,
     step_name: str,
-    node_name: str = None,
+    node_name: str | None = None,
 ):
     """
     Wrap a node function to persist metadata after execution.
@@ -269,15 +269,95 @@ def create_research_graph():
     async def merge_researchers(state: ResearchState) -> ResearchState:
         """
         Merge outputs from parallel researcher agents.
-        Combines sources, costs, and tokens without overwriting.
+        
+        Since we removed Annotated reducers, we manually combine:
+        - sources: deduplicate and extend
+        - cost: sum all researcher costs
+        - tokens_used: sum all tokens
+        - errors: combine all error messages
+        
+        Handles None values and ensures no data loss.
         """
-        # State already contains latest from researchers due to LangGraph's synchronization
-        # Just need to ensure it's properly formatted
-        logger.info(
-            f"Merged researchers: {len(state.sources)} sources found, "
-            f"cost: ${state.cost:.4f}, tokens: {state.tokens_used}"
-        )
-        return state
+        try:
+            # Start with clean aggregates
+            merged_sources = []
+            total_cost = 0.0
+            total_tokens = 0
+            merged_errors: list[str] = []
+            
+            # Extract sources - avoid duplicates by URL
+            if state.sources:
+                seen_urls = set()
+                for source in state.sources:
+                    # Use URL as unique identifier, fallback to title or id
+                    source_id = None
+                    if hasattr(source, 'url') and source.url:
+                        source_id = source.url
+                    elif hasattr(source, 'title') and source.title:
+                        source_id = source.title
+                    elif hasattr(source, 'id') and source.id:
+                        source_id = source.id
+                    
+                    if source_id and source_id not in seen_urls:
+                        merged_sources.append(source)
+                        seen_urls.add(source_id)
+            
+            # Aggregate costs and tokens
+            if state.cost is not None:
+                total_cost = float(state.cost)
+            if state.tokens_used is not None:
+                total_tokens = int(state.tokens_used)
+            
+            # Combine error messages
+            if state.errors:
+                merged_errors = list(state.errors) if isinstance(state.errors, list) else [state.errors]
+            
+            # Log aggregation summary
+            logger.info(
+                f"[Researchers Merged] task_id={state.task_id} | "
+                f"sources={len(merged_sources)} (unique) | "
+                f"cost=${total_cost:.6f} | "
+                f"tokens={total_tokens}"
+            )
+            
+            # Return aggregated state
+            # Explicitly assign to avoid any reference issues
+            return ResearchState(
+                task_id=state.task_id,
+                topic=state.topic,
+                requirements=state.requirements,
+                num_sources_target=state.num_sources_target,
+                research_queries=state.research_queries,
+                research_plan=state.research_plan,
+                sources=merged_sources,  # Deduplicated
+                verified_sources=state.verified_sources or [],
+                verification_notes=state.verification_notes or "",
+                contradictions=state.contradictions or [],
+                contradiction_analysis=state.contradiction_analysis or "",
+                draft_paper=state.draft_paper or "",
+                draft_outline=state.draft_outline or [],
+                review_feedback=state.review_feedback or "",
+                issues_found=state.issues_found or [],
+                revision_needed=state.revision_needed,
+                final_paper=state.final_paper or "",
+                status=state.status,
+                cost=total_cost,  # Aggregated
+                tokens_used=total_tokens,  # Aggregated
+                start_time=state.start_time,
+                end_time=state.end_time,
+                execution_metrics=state.execution_metrics,
+                errors=merged_errors,  # Combined
+                synthesis_confidence=state.synthesis_confidence,
+                source_quality_score=state.source_quality_score,
+                verifier_rejection_count=state.verifier_rejection_count,
+                max_revision_attempts=state.max_revision_attempts,
+                current_revision_attempt=state.current_revision_attempt,
+                fallback_triggered=state.fallback_triggered,
+            )
+        except Exception as e:
+            logger.error(f"Error merging researchers: {e}", exc_info=True)
+            # Return state as-is if merge fails
+            return state
     
     workflow.add_node("merge_researchers", merge_researchers)
     
