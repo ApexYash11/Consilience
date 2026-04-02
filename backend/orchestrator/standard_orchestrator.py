@@ -666,13 +666,16 @@ async def run_research(initial_state: ResearchState, deadline_at: Optional[datet
     Returns:
         Final ResearchState after workflow completes
     
-    Raises:
-        asyncio.TimeoutError: If workflow exceeds deadline
-        Exception: If workflow encounters an error
+    Returns:
+        ResearchState: Completed state with status COMPLETED, or FAILED with descriptive error message.
+        On asyncio.TimeoutError: returns initial_state with status=FAILED, end_time set, and error context (does not re-raise).
     """
     
     initial_state.start_time = datetime.utcnow()
     initial_state.status = TaskStatus.RUNNING
+    
+    # PHASE 3: Initialize timeout_seconds before try block to ensure it's in scope for except handler
+    timeout_seconds = None
     
     try:
         # Prepare LangSmith config with metadata for observability
@@ -689,7 +692,6 @@ async def run_research(initial_state: ResearchState, deadline_at: Optional[datet
         }
         
         # PHASE 3: Calculate timeout from deadline
-        timeout_seconds = None
         if deadline_at:
             remaining = ResearchService.get_remaining_time_static(deadline_at)
             if remaining is not None and remaining > 0:
@@ -726,6 +728,13 @@ async def run_research(initial_state: ResearchState, deadline_at: Optional[datet
         logger.error(f"[Phase 3] Workflow timeout for task {initial_state.task_id}: {str(e)}")
         initial_state.status = TaskStatus.FAILED
         initial_state.end_time = datetime.utcnow()
+        # Enrich error context with timeout information
+        timeout_error = f"Workflow exceeded deadline after {timeout_seconds:.1f}s"
+        initial_state.errors.append(timeout_error)
+        if not initial_state.execution_metrics:
+            initial_state.execution_metrics = {}
+        initial_state.execution_metrics['error_code'] = 'TIMEOUT'
+        initial_state.execution_metrics['timeout_seconds'] = timeout_seconds
         # Don't re-raise - let caller handle with timeout cleanup
         return initial_state
     except Exception as e:

@@ -708,7 +708,8 @@ class ResearchService:
                 return None
                 
         except Exception as e:
-            logger.error(f"[Phase 3] Error updating heartbeat for task {task_id}: {e}")
+            await session.rollback()
+            logger.exception(f"[Phase 3] Error updating heartbeat for task {task_id}: {e}")
             # Don't raise - heartbeat is non-critical
             return None
 

@@ -94,6 +94,23 @@ class HeartbeatService:
         logger.debug(f"[Phase 3] Heartbeat loop started for task {task_id}")
         
         try:
+            # Perform immediate heartbeat before entering sleep cycle
+            try:
+                async with AsyncSessionLocal() as session:
+                    updated = await ResearchService.update_heartbeat(session, task_id)
+                    if updated is None:
+                        logger.warning(f"[Phase 3] Task {task_id} not found during initial heartbeat update")
+                        return
+                    # Check if task is already terminal
+                    task_status = getattr(updated, 'status', None)
+                    if task_status is not None:
+                        if ResearchService.is_task_terminal(task_status):
+                            logger.debug(f"[Phase 3] Task {task_id} is already terminal ({task_status}), not starting heartbeat")
+                            return
+            except Exception as e:
+                logger.error(f"[Phase 3] Error during initial heartbeat for task {task_id}: {e}")
+                # Continue despite error - heartbeat is best-effort
+            
             while True:
                 await asyncio.sleep(TASK_HEARTBEAT_INTERVAL_SECONDS)
                 
