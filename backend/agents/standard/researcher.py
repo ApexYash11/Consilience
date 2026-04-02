@@ -118,26 +118,43 @@ async def researcher_node(
                     duration_seconds=time.time() - start_time,
                 )
 
-            # Return only the fields this agent updates (allows concurrent merging in LangGraph)
+            # PHASE 2 FIX: Namespace output to avoid LangGraph concurrent write conflicts
+            # Return all data in a single namespaced field keyed by researcher index
+            # This prevents multiple agents from writing to the same state keys (sources, tokens_used, cost, errors)
+            output_key = f"researcher_{researcher_index}_output"
             return {
-                "sources": current_sources,
-                "tokens_used": tokens_used,
-                "cost": cost,
-                "errors": state.errors or [],
+                output_key: {
+                    "sources": found_sources,  # Raw sources from this researcher (NOT aggregated)
+                    "tokens_used": tokens["total_tokens"],  # This researcher's tokens only
+                    "cost": cost_info["cost"],  # This researcher's cost only
+                    "errors": [],  # No errors this researcher
+                }
             }
 
     except asyncio.TimeoutError:
         logger.warning(f"{researcher_id} timed out after 180 seconds")
-        # Create a new list to avoid mutating state.errors
-        existing_errors = (state.errors or []) if hasattr(state, "errors") else []
-        new_errors = list(existing_errors) + [f"{researcher_id}: Timeout"]
-        return {"errors": new_errors}
+        # PHASE 2 FIX: Return timeout error in namespaced field
+        output_key = f"researcher_{researcher_index}_output"
+        return {
+            output_key: {
+                "sources": [],
+                "tokens_used": 0,
+                "cost": 0.0,
+                "errors": [f"{researcher_id}: Timeout"],
+            }
+        }
     except Exception as e:
         logger.error(f"{researcher_id} failed: {str(e)}")
-        # Create a new list to avoid mutating state.errors
-        existing_errors = (state.errors or []) if hasattr(state, "errors") else []
-        new_errors = list(existing_errors) + [f"{researcher_id}: {str(e)}"]
-        return {"errors": new_errors}
+        # PHASE 2 FIX: Return exception error in namespaced field
+        output_key = f"researcher_{researcher_index}_output"
+        return {
+            output_key: {
+                "sources": [],
+                "tokens_used": 0,
+                "cost": 0.0,
+                "errors": [f"{researcher_id}: {str(e)}"],
+            }
+        }
 
 
 async def search_sources(query: str, researcher_id: int) -> Tuple[List[Source], Dict]:

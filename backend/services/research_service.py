@@ -5,6 +5,7 @@ from datetime import datetime
 from uuid import UUID
 from sqlalchemy.orm import Session
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import update, select
 
 from ..database.schema import (
     ResearchTaskDB,
@@ -132,6 +133,120 @@ class ResearchService:
         tasks = list(result.scalars().all())
         
         return tasks, total_count
+
+    @staticmethod
+    async def update_research_task_with_retry(
+        session: AsyncSession,
+        task_id: UUID,
+        status: Optional[TaskStatus] = None,
+        actual_cost_usd: Optional[float] = None,
+        tokens_used: Optional[int] = None,
+        final_state: Optional[ResearchState] = None,
+        error_message: Optional[str] = None,
+        metadata_json: Optional[Dict[str, Any]] = None,
+        max_retries: int = 3,
+    ) -> Optional[ResearchTaskDB]:
+        """
+        PHASE 2 FIX: Update research task with optimistic locking and retry.
+        
+        Uses row_version column for safe concurrent updates. If a concurrent
+        write occurs, this method will retry up to max_retries times, re-fetching
+        the latest state and re-applying the update.
+        
+        Args:
+            session: AsyncSession for database operations
+            task_id: UUID of the task
+            status: New task status
+            actual_cost_usd: Final cost
+            tokens_used: Total tokens
+            final_state: ResearchState with results
+            error_message: Error details
+            metadata_json: Additional metadata
+            max_retries: Maximum retry attempts (default 3)
+        
+        Returns:
+            Updated ResearchTaskDB or None if not found
+        """
+        for attempt in range(max_retries):
+            try:
+                # Fetch current task state (gets current row_version)
+                task = await ResearchService.get_research_task(session, task_id)
+                if not task:
+                    return None
+                
+                # Get current row_version before modification
+                current_version = getattr(task, 'row_version', 0) or 0
+                
+                # Build update dict with only the fields being changed
+                update_dict = {}
+                
+                if status is not None:
+                    update_dict['status'] = status
+                    # Update timing based on status
+                    if status == TaskStatus.RUNNING and (not hasattr(task, 'started_at') or task.started_at is None):
+                        update_dict['started_at'] = datetime.utcnow()
+                    elif status in (TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED):
+                        update_dict['completed_at'] = datetime.utcnow()
+                
+                if actual_cost_usd is not None:
+                    update_dict['actual_cost_usd'] = actual_cost_usd
+                
+                if tokens_used is not None:
+                    update_dict['tokens_used'] = tokens_used
+                
+                if final_state:
+                    update_dict['final_state_json'] = final_state.dict()
+                
+                if error_message:
+                    update_dict['error_message'] = error_message
+                
+                if metadata_json:
+                    update_dict['metadata_json'] = metadata_json
+                
+                # Increment row_version for optimistic lock
+                update_dict['row_version'] = current_version + 1
+                
+                # Execute UPDATE with optimistic lock condition
+                # Only update if row_version matches what we read
+                stmt = (
+                    update(ResearchTaskDB)
+                    .where(ResearchTaskDB.id == task_id)
+                    .where(ResearchTaskDB.row_version == current_version)
+                    .values(**update_dict)
+                )
+                
+                result = await session.execute(stmt)
+                await session.commit()
+                
+                if result.rowcount == 0:
+                    # Optimistic lock failed - another writer modified this row
+                    if attempt < max_retries - 1:
+                        logger.warning(
+                            f"Optimistic lock conflict on task {task_id}, attempt {attempt + 1}/{max_retries}. Retrying..."
+                        )
+                        # Refresh session to discard stale state
+                        await session.rollback()
+                        continue
+                    else:
+                        logger.error(
+                            f"Optimistic lock conflict on task {task_id} after {max_retries} retries. Giving up."
+                        )
+                        return None
+                
+                # Success - fetch updated task and return
+                task = await ResearchService.get_research_task(session, task_id)
+                logger.info(f"Updated research task {task_id} to status {status} (row_version={current_version} -> {current_version + 1})")
+                return task
+                
+            except Exception as e:
+                logger.error(f"Error updating research task {task_id} (attempt {attempt + 1}/{max_retries}): {e}")
+                await session.rollback()
+                if attempt == max_retries - 1:
+                    raise
+                # Retry on any exception
+                continue
+        
+        return None
 
     @staticmethod
     async def update_research_task(

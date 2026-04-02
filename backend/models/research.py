@@ -120,6 +120,14 @@ class ResearchState(BaseModel):
     # Note: Removed Annotated reducer - orchestrator handles merging explicitly
     sources: List[Source] = Field(default_factory=list)
 
+    # PHASE 2 FIX: Namespaced researcher outputs to prevent concurrent write conflicts
+    # Each researcher writes to its own field to avoid LangGraph state conflicts
+    researcher_0_output: Optional[Dict[str, Any]] = None
+    researcher_1_output: Optional[Dict[str, Any]] = None
+    researcher_2_output: Optional[Dict[str, Any]] = None
+    researcher_3_output: Optional[Dict[str, Any]] = None
+    researcher_4_output: Optional[Dict[str, Any]] = None
+
     # Verifier output
     verified_sources: List[Source] = Field(default_factory=list)
     verification_notes: str = ""

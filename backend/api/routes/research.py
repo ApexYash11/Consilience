@@ -139,6 +139,8 @@ async def _persist_metadata_to_db(
     """
     Callback for persisting research metadata updates during execution.
     This enables live progress updates during research execution.
+    
+    PHASE 2 FIX: Uses optimistic locking to prevent concurrent write conflicts.
     """
     try:
         # Get a fresh database session for this async operation
@@ -148,7 +150,7 @@ async def _persist_metadata_to_db(
                 "current_step": current_step,
                 "sources": sources,
                 "model": model,
-                "cost_per_token": cost / tokens_used if tokens_used > 0 else 0.0,  # Calculate from actual values
+                "cost_per_token": cost / tokens_used if tokens_used > 0 else 0.0,
             }
             
             logger.info(
@@ -157,13 +159,14 @@ async def _persist_metadata_to_db(
                 f"tokens={tokens_used}, cost=${cost:.4f}, model={model}"
             )
             
-            # Update task with current progress
-            await ResearchService.update_research_task(
+            # PHASE 2: Use optimistic locking to safely handle concurrent updates
+            await ResearchService.update_research_task_with_retry(
                 session=session,
                 task_id=task_id,
                 tokens_used=tokens_used,
                 actual_cost_usd=cost,
                 metadata_json=metadata,
+                max_retries=3,
             )
     except Exception as e:
         logger.error(f"Failed to persist metadata for task {task_id}: {e}", exc_info=True)
@@ -188,11 +191,12 @@ async def _execute_research_background(
         set_agent_action_logger(_log_agent_action_to_db)
         set_metadata_persistence_callback(_persist_metadata_to_db)
 
-        # Update task status to running
-        await ResearchService.update_research_task(
+        # PHASE 2: Use optimistic locking for status update
+        await ResearchService.update_research_task_with_retry(
             session=session,
             task_id=task_id,
             status=TaskStatus.RUNNING,
+            max_retries=3,
         )
         
         # Update heartbeat to signal task is alive (Problem 2: Orphaned Tasks)
@@ -266,7 +270,8 @@ async def _execute_research_background(
         # Update heartbeat one final time (Problem 2: Orphaned Tasks)
         await TaskRecoveryService.update_heartbeat(str(task_id))
         
-        await ResearchService.update_research_task(
+        # PHASE 2: Use optimistic locking for final state update
+        await ResearchService.update_research_task_with_retry(
             session=session,
             task_id=task_id,
             status=TaskStatus.COMPLETED,
@@ -274,6 +279,7 @@ async def _execute_research_background(
             tokens_used=tokens,
             final_state=final_state,
             metadata_json=final_metadata,
+            max_retries=3,
         )
         logger.info(
             f"Research workflow completed for task {task_id}: "
@@ -307,11 +313,13 @@ async def _execute_research_background(
         # Update heartbeat before marking as failed (Problem 2: Orphaned Tasks)
         await TaskRecoveryService.update_heartbeat(str(task_id))
         
-        await ResearchService.update_research_task(
+        # PHASE 2: Use optimistic locking for failure update
+        await ResearchService.update_research_task_with_retry(
             session=session,
             task_id=task_id,
             status=TaskStatus.FAILED,
             error_message=str(e),
+            max_retries=3,
         )
     finally:
         # Clean up the task from tracking

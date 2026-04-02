@@ -268,10 +268,15 @@ def create_research_graph():
         """
         Merge outputs from parallel researcher agents.
         
-        Since we removed Annotated reducers, we manually combine:
-        - sources: deduplicate and extend
+        PHASE 2 FIX: Safely aggregate namespaced researcher outputs.
+        Each researcher writes to its own field (researcher_N_output) to prevent
+        concurrent write conflicts. This node reads all namespaced outputs and
+        safely merges them into the main state fields.
+        
+        Aggregation logic:
+        - sources: extend unique sources (deduplicate by URL)
         - cost: sum all researcher costs
-        - tokens_used: sum all tokens
+        - tokens_used: sum all researcher tokens
         - errors: combine all error messages
         
         Handles None values and ensures no data loss.
@@ -283,53 +288,76 @@ def create_research_graph():
             total_tokens = 0
             merged_errors: list[str] = []
             
-            # Extract sources - avoid duplicates by URL, with fallback for missing identifiers
-            if state.sources:
-                seen_urls = set()
-                for idx, source in enumerate(state.sources):
-                    # Use URL as unique identifier, fallback to title or id
-                    source_id = None
-                    if hasattr(source, 'url') and source.url:
-                        source_id = source.url
-                    elif hasattr(source, 'title') and source.title:
-                        source_id = source.title
-                    elif hasattr(source, 'id') and source.id:
-                        source_id = source.id
-                    else:
-                        # Fallback: use memory address hash for sources without identifying fields
-                        source_id = f"anon-{id(source)}"
-                        logger.debug(
-                            f"[Researcher Merge] Using fallback identifier for source at index {idx}: {source_id}"
-                        )
-                    
-                    if source_id not in seen_urls:
-                        merged_sources.append(source)
-                        seen_urls.add(source_id)
-                    else:
-                        logger.debug(
-                            f"[Researcher Merge] Skipping duplicate source with id: {source_id}"
-                        )
+            # PHASE 2: Read from all namespaced researcher outputs (0-4)
+            researcher_outputs = []
+            for i in range(5):
+                output_key = f"researcher_{i}_output"
+                output = getattr(state, output_key, None)
+                if output and isinstance(output, dict):
+                    researcher_outputs.append(output)
+                    logger.debug(f"[Researcher Merge] Aggregating output from researcher_{i}")
             
-            # Aggregate costs and tokens
-            if state.cost is not None:
-                total_cost = float(state.cost)
-            if state.tokens_used is not None:
-                total_tokens = int(state.tokens_used)
+            # If no namespaced outputs found, fall back to direct state fields
+            # (for backward compatibility with older state)
+            if not researcher_outputs and state.sources:
+                logger.warning("[Researcher Merge] No namespaced outputs found; using state.sources directly")
+                researcher_outputs = [{
+                    "sources": state.sources or [],
+                    "tokens_used": state.tokens_used or 0,
+                    "cost": state.cost or 0.0,
+                    "errors": state.errors or [],
+                }]
             
-            # Combine error messages
-            if state.errors:
-                merged_errors = list(state.errors) if isinstance(state.errors, list) else [state.errors]
+            # Aggregate all researcher outputs
+            seen_urls = set()
+            for output in researcher_outputs:
+                # Extract sources - avoid duplicates by URL
+                if "sources" in output and output["sources"]:
+                    for idx, source in enumerate(output["sources"]):
+                        source_id = None
+                        if hasattr(source, 'url') and source.url:
+                            source_id = source.url
+                        elif hasattr(source, 'title') and source.title:
+                            source_id = source.title
+                        elif hasattr(source, 'id') and source.id:
+                            source_id = source.id
+                        else:
+                            source_id = f"anon-{id(source)}"
+                            logger.debug(f"[Researcher Merge] Using fallback identifier for source: {source_id}")
+                        
+                        if source_id not in seen_urls:
+                            # Convert to Source model if it's a dict
+                            if isinstance(source, dict):
+                                from ..models.research import Source as SourceModel
+                                merged_sources.append(SourceModel(**source))
+                            else:
+                                merged_sources.append(source)
+                            seen_urls.add(source_id)
+                
+                # Aggregate tokens and costs
+                if "tokens_used" in output and output["tokens_used"]:
+                    total_tokens += int(output["tokens_used"])
+                if "cost" in output and output["cost"]:
+                    total_cost += float(output["cost"])
+                
+                # Combine errors
+                if "errors" in output and output["errors"]:
+                    if isinstance(output["errors"], list):
+                        merged_errors.extend(output["errors"])
+                    else:
+                        merged_errors.append(output["errors"])
             
             # Log aggregation summary
             logger.info(
                 f"[Researchers Merged] task_id={state.task_id} | "
                 f"sources={len(merged_sources)} (unique) | "
                 f"cost=${total_cost:.6f} | "
-                f"tokens={total_tokens}"
+                f"tokens={total_tokens} | "
+                f"errors={len(merged_errors)}"
             )
             
-            # Return aggregated state
-            # Explicitly assign to avoid any reference issues
+            # Return aggregated state with cleared namespaced outputs
+            # This ensures downstream nodes don't see the intermediate fields
             return ResearchState(
                 task_id=state.task_id,
                 topic=state.topic,
@@ -337,7 +365,12 @@ def create_research_graph():
                 num_sources_target=state.num_sources_target,
                 research_queries=state.research_queries,
                 research_plan=state.research_plan,
-                sources=merged_sources,  # Deduplicated
+                sources=merged_sources,  # Deduplicated aggregates
+                researcher_0_output=None,  # Clear all namespaced fields
+                researcher_1_output=None,
+                researcher_2_output=None,
+                researcher_3_output=None,
+                researcher_4_output=None,
                 verified_sources=state.verified_sources or [],
                 verification_notes=state.verification_notes or "",
                 contradictions=state.contradictions or [],
