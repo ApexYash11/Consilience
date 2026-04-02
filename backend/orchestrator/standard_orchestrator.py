@@ -368,9 +368,9 @@ def create_research_graph():
                             continue
                 
                 # Aggregate tokens and costs
-                if "tokens_used" in output and output["tokens_used"]:
+                if "tokens_used" in output and output["tokens_used"] is not None:
                     total_tokens += int(output["tokens_used"])
-                if "cost" in output and output["cost"]:
+                if "cost" in output and output["cost"] is not None:
                     total_cost += float(output["cost"])
                 
                 # Combine errors
@@ -664,9 +664,6 @@ async def run_research(initial_state: ResearchState, deadline_at: Optional[datet
         deadline_at: Optional deadline datetime. If provided, workflow will timeout if execution exceeds deadline.
     
     Returns:
-        Final ResearchState after workflow completes
-    
-    Returns:
         ResearchState: Completed state with status COMPLETED, or FAILED with descriptive error message.
         On asyncio.TimeoutError: returns initial_state with status=FAILED, end_time set, and error context (does not re-raise).
     """
@@ -729,12 +726,16 @@ async def run_research(initial_state: ResearchState, deadline_at: Optional[datet
         initial_state.status = TaskStatus.FAILED
         initial_state.end_time = datetime.utcnow()
         # Enrich error context with timeout information
-        timeout_error = f"Workflow exceeded deadline after {timeout_seconds:.1f}s"
+        timeout_str = f"{timeout_seconds:.1f}" if timeout_seconds is not None else "unknown"
+        timeout_error = f"Workflow exceeded deadline after {timeout_str}s"
+        if initial_state.errors is None:
+            initial_state.errors = []
         initial_state.errors.append(timeout_error)
         if not initial_state.execution_metrics:
             initial_state.execution_metrics = {}
         initial_state.execution_metrics['error_code'] = 'TIMEOUT'
-        initial_state.execution_metrics['timeout_seconds'] = timeout_seconds
+        if timeout_seconds is not None:
+            initial_state.execution_metrics['timeout_seconds'] = timeout_seconds
         # Don't re-raise - let caller handle with timeout cleanup
         return initial_state
     except Exception as e:

@@ -9,7 +9,39 @@ Manages:
 """
 
 import os
+import logging
 from datetime import timedelta
+
+logger = logging.getLogger(__name__)
+
+
+def parse_int_env(var_name: str, default: int) -> int:
+    """
+    Parse an integer environment variable with graceful error handling.
+    
+    Args:
+        var_name: Name of environment variable to read
+        default: Default value if not set or invalid
+        
+    Returns:
+        Parsed integer value or default
+        
+    Raises:
+        ValueError: If var_name is explicitly set but invalid
+    """
+    value = os.getenv(var_name)
+    if value is None:
+        return default
+    
+    try:
+        return int(value)
+    except ValueError:
+        logger.error(
+            f"Invalid value for {var_name}: expected integer, got '{value}'. "
+            f"Using default: {default}"
+        )
+        return default
+
 
 # PHASE 3: Get worker identification for multi-worker environments
 WORKER_ID = os.getenv(
@@ -27,26 +59,30 @@ if not WORKER_ID:
 
 # PHASE 3: Global workflow timeout (seconds)
 # Maximum time allowed for entire research workflow
-WORKFLOW_TIMEOUT_SECONDS = int(
-    os.getenv("CONSILIENCE_WORKFLOW_TIMEOUT_SECONDS", "1800")  # Default: 30 minutes
+WORKFLOW_TIMEOUT_SECONDS = parse_int_env(
+    "CONSILIENCE_WORKFLOW_TIMEOUT_SECONDS", 
+    1800  # Default: 30 minutes
 )
 
 # PHASE 3: Heartbeat interval (seconds)
 # How often to update task heartbeat during execution
-TASK_HEARTBEAT_INTERVAL_SECONDS = int(
-    os.getenv("CONSILIENCE_TASK_HEARTBEAT_INTERVAL_SECONDS", "30")  # Default: 30 seconds
+TASK_HEARTBEAT_INTERVAL_SECONDS = parse_int_env(
+    "CONSILIENCE_TASK_HEARTBEAT_INTERVAL_SECONDS",
+    30  # Default: 30 seconds
 )
 
 # PHASE 3: Task sweep interval (seconds)
 # How often recovery service scans for orphaned/expired tasks
-TASK_SWEEP_INTERVAL_SECONDS = int(
-    os.getenv("CONSILIENCE_TASK_SWEEP_INTERVAL_SECONDS", "120")  # Default: 2 minutes
+TASK_SWEEP_INTERVAL_SECONDS = parse_int_env(
+    "CONSILIENCE_TASK_SWEEP_INTERVAL_SECONDS",
+    120  # Default: 2 minutes
 )
 
 # PHASE 3: Orphan timeout threshold (seconds)
 # If task hasn't been heartbeat in this time, consider it orphaned
-TASK_ORPHAN_TIMEOUT_SECONDS = int(
-    os.getenv("CONSILIENCE_TASK_ORPHAN_TIMEOUT_SECONDS", "300")  # Default: 5 minutes
+TASK_ORPHAN_TIMEOUT_SECONDS = parse_int_env(
+    "CONSILIENCE_TASK_ORPHAN_TIMEOUT_SECONDS",
+    300  # Default: 5 minutes
 )
 
 # PHASE 3: Convert to timedelta for easier comparison

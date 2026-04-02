@@ -59,7 +59,7 @@ def format_rate_limit_error(
     """Format a rate limit (429) error response."""
     message = f"API rate limit exceeded (agent: {agent_name}). Please retry after waiting."
     context: Dict[str, Any] = {}
-    if retry_after_seconds:
+    if retry_after_seconds is not None:
         context["retry_after_seconds"] = retry_after_seconds
         message += f" Retry after {retry_after_seconds}s."
     

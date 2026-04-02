@@ -145,6 +145,9 @@ class HeartbeatService:
             logger.error(f"[Phase 3] Unexpected error in heartbeat loop for task {task_id}: {e}")
         finally:
             logger.debug(f"[Phase 3] Heartbeat loop ended for task {task_id}")
+            # Clean up task entry from global dict to prevent stale task references
+            if task_id in _heartbeat_tasks:
+                del _heartbeat_tasks[task_id]
 
     @staticmethod
     async def get_active_heartbeats() -> list[str]:

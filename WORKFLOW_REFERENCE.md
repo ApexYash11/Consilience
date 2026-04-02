@@ -17,18 +17,21 @@ START
   ↓
 [1] PLANNER (Analyze topic → Generate 5-10 queries)
   ↓ (deterministic)
-[2-6] RESEARCHERS × 5 in PARALLEL (Each searches with 2 queries)
-  ├─ Researcher 1: Queries 1-2
-  ├─ Researcher 2: Queries 3-4
-  ├─ Researcher 3: Queries 5-6
-  ├─ Researcher 4: Queries 7-8
-  └─ Researcher 5: Queries 9-10
+[2-6] RESEARCHERS × 5 in PARALLEL (Queries assigned round-robin)
+  Distribution: N queries ∈ [5,10] assigned to 5 researchers
+  Each researcher gets floor(N/5) queries, first (N mod 5) get +1 extra
+  Examples: 5 queries → [1,1,1,1,1] | 7 queries → [2,1,1,2,1] | 10 queries → [2,2,2,2,2]
+  ├─ Researcher 1: Queries [assigned round-robin]
+  ├─ Researcher 2: Queries [assigned round-robin]
+  ├─ Researcher 3: Queries [assigned round-robin]
+  ├─ Researcher 4: Queries [assigned round-robin]
+  └─ Researcher 5: Queries [assigned round-robin]
   ↓ (synchronization point)
 [7] MERGE_RESEARCHERS (Deduplicate sources, sum tokens/costs)
   ↓ (deterministic)
 [8] VERIFIER (Assess source credibility)
-  ├─ Quality Score < 0.3 & !retry_triggered → [9] RESEARCHER-RETRY
-  └─ Quality Score ≥ 0.3 OR retry_triggered → [10] DETECTOR
+  ├─ Quality Score < 0.3 & !fallback_triggered → [9] RESEARCHER-RETRY
+  └─ Quality Score ≥ 0.3 OR fallback_triggered → [10] DETECTOR
   ↓
 [9] RESEARCHER-RETRY (Generate fallback queries, re-search)
   └─ Routes back to [8] VERIFIER
@@ -85,7 +88,7 @@ END
 - Sources may have duplicates (deduplicated later)
 
 ### [7] MERGE_RESEARCHERS
-**Purpose**: Combine 5 researcher outputs into single deuplicated state  
+**Purpose**: Combine 5 researcher outputs into single deduplicated state  
 **Logic**:
 ```
 For each source across all researchers:

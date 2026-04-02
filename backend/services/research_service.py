@@ -875,11 +875,13 @@ class ResearchService:
         try:
             if mark_used:
                 # Completion case: decrement inflight AND increment actual usage
+                # Use func.greatest to clamp inflight to 0 (prevent negative)
+                from sqlalchemy import func
                 stmt = (
                     update(UserDB)
                     .where(UserDB.id == user_id)
                     .values(
-                        deep_quota_inflight=UserDB.deep_quota_inflight - 1,
+                        deep_quota_inflight=func.greatest(UserDB.deep_quota_inflight - 1, 0),
                         monthly_deep_quota_used=UserDB.monthly_deep_quota_used + 1,
                     )
                 )
@@ -889,11 +891,13 @@ class ResearchService:
                 )
             else:
                 # Failure case: just decrement inflight, don't count usage
+                # Use func.greatest to clamp inflight to 0 (prevent negative)
+                from sqlalchemy import func
                 stmt = (
                     update(UserDB)
                     .where(UserDB.id == user_id)
                     .values(
-                        deep_quota_inflight=UserDB.deep_quota_inflight - 1,
+                        deep_quota_inflight=func.greatest(UserDB.deep_quota_inflight - 1, 0),
                     )
                 )
                 logger.debug(

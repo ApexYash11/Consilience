@@ -7,6 +7,7 @@ Create Date: 2026-04-03 10:00:00.000000
 """
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import JSONB
 
 
 # revision identifiers, used by Alembic.
@@ -21,7 +22,7 @@ def upgrade() -> None:
     op.add_column('research_tasks', sa.Column('worker_id', sa.String(64), nullable=True))
     op.add_column('research_tasks', sa.Column('deadline_at', sa.TIMESTAMP(timezone=True), nullable=True))
     op.add_column('research_tasks', sa.Column('error_code', sa.String(64), nullable=True))
-    op.add_column('research_tasks', sa.Column('error_context_json', sa.JSON(), nullable=True, server_default=sa.text("'{}'::jsonb")))
+    op.add_column('research_tasks', sa.Column('error_context_json', JSONB(), nullable=True, server_default=sa.text("'{}'::jsonb")))
     op.add_column('research_tasks', sa.Column('row_version', sa.Integer(), nullable=False, server_default='0'))
 
     # Add columns to users table for deep quota reservation
