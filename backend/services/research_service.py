@@ -780,6 +780,194 @@ class ResearchService:
         )
 
     @staticmethod
+    async def reserve_deep_quota(
+        session: AsyncSession,
+        user_id: UUID,
+    ) -> bool:
+        """
+        PHASE 4: Atomically reserve deep research quota (increment inflight count).
+        
+        Uses transactional UPDATE to safely increment deep_quota_inflight ONLY if
+        total quota available (inflight + actual_usage < monthly_quota).
+        
+        This prevents race conditions where multiple concurrent requests could
+        bypass the quota limit.
+        
+        Args:
+            session: AsyncSession for database operations
+            user_id: UUID of user
+            
+        Returns:
+            True if quota reserved successfully, False if quota exceeded
+            
+        Raises:
+            Exception: On database error
+        """
+        from ..database.schema import UserDB
+        
+        try:
+            # Atomic transactional check-and-increment:
+            # UPDATE users
+            # SET deep_quota_inflight = deep_quota_inflight + 1
+            # WHERE id = ? AND (monthly_deep_quota_used + deep_quota_inflight < monthly_deep_quota)
+            
+            stmt = (
+                update(UserDB)
+                .where(
+                    UserDB.id == user_id,
+                    # Safety check: Allow reserve only if inflight + used < quota
+                    (UserDB.monthly_deep_quota_used + UserDB.deep_quota_inflight) < UserDB.monthly_deep_quota
+                )
+                .values(deep_quota_inflight=UserDB.deep_quota_inflight + 1)
+            )
+            
+            result = await session.execute(stmt)
+            await session.commit()
+            
+            reserved = result.rowcount > 0
+            
+            if reserved:
+                logger.info(
+                    f"[Phase 4] Deep quota reserved for user {user_id} "
+                    f"(inflight now +1)"
+                )
+            else:
+                logger.warning(
+                    f"[Phase 4] Failed to reserve deep quota for user {user_id} "
+                    f"(quota exceeded or user not found)"
+                )
+            
+            return reserved
+            
+        except Exception as e:
+            logger.exception(
+                f"[Phase 4] Error reserving deep quota for user {user_id}: {e}"
+            )
+            await session.rollback()
+            raise
+
+    @staticmethod
+    async def release_deep_quota(
+        session: AsyncSession,
+        user_id: UUID,
+        mark_used: bool = False,
+    ) -> bool:
+        """
+        PHASE 4: Atomically release deep research quota.
+        
+        On task completion: mark_used=True decrements inflight and increments actual usage.
+        On task failure: mark_used=False just decrements inflight (don't count failed task against quota).
+        
+        Args:
+            session: AsyncSession for database operations
+            user_id: UUID of user
+            mark_used: If True, increment monthly_deep_quota_used (count as completed).
+                      If False, just decrement inflight without counting.
+            
+        Returns:
+            True if update succeeded, False otherwise
+            
+        Raises:
+            Exception: On database error
+        """
+        from ..database.schema import UserDB
+        
+        try:
+            if mark_used:
+                # Completion case: decrement inflight AND increment actual usage
+                stmt = (
+                    update(UserDB)
+                    .where(UserDB.id == user_id)
+                    .values(
+                        deep_quota_inflight=UserDB.deep_quota_inflight - 1,
+                        monthly_deep_quota_used=UserDB.monthly_deep_quota_used + 1,
+                    )
+                )
+                logger.debug(
+                    f"[Phase 4] Releasing deep quota for user {user_id} "
+                    f"(marking as used)"
+                )
+            else:
+                # Failure case: just decrement inflight, don't count usage
+                stmt = (
+                    update(UserDB)
+                    .where(UserDB.id == user_id)
+                    .values(
+                        deep_quota_inflight=UserDB.deep_quota_inflight - 1,
+                    )
+                )
+                logger.debug(
+                    f"[Phase 4] Releasing deep quota for user {user_id} "
+                    f"(no usage counted, task failed)"
+                )
+            
+            result = await session.execute(stmt)
+            await session.commit()
+            
+            success = result.rowcount > 0
+            
+            if not success:
+                logger.warning(
+                    f"[Phase 4] Failed to release quota for user {user_id} "
+                    f"(user not found)"
+                )
+            
+            return success
+            
+        except Exception as e:
+            logger.exception(
+                f"[Phase 4] Error releasing deep quota for user {user_id}: {e}"
+            )
+            await session.rollback()
+            raise
+
+    @staticmethod
+    async def get_quota_status(
+        session: AsyncSession,
+        user_id: UUID,
+    ) -> Optional[Dict[str, int]]:
+        """
+        Get current deep quota status for a user.
+        
+        Args:
+            session: AsyncSession for database operations
+            user_id: UUID of user
+            
+        Returns:
+            Dict with keys: quota, used, inflight, available
+            or None if user not found
+        """
+        from ..database.schema import UserDB
+        
+        try:
+            stmt = select(UserDB).where(UserDB.id == user_id)
+            result = await session.execute(stmt)
+            user = result.scalar_one_or_none()
+            
+            if not user:
+                return None
+            
+            quota = user.monthly_deep_quota or 0
+            used = user.monthly_deep_quota_used or 0
+            inflight = user.deep_quota_inflight or 0
+            available = max(0, quota - used - inflight)
+            
+            return {
+                "quota": quota,
+                "used": used,
+                "inflight": inflight,
+                "available": available,
+                "total_reserved": used + inflight,
+            }
+            
+        except Exception as e:
+            logger.exception(
+                f"[Phase 4] Error getting quota status for user {user_id}: {e}"
+            )
+            return None
+
+
+    @staticmethod
     async def save_checkpoint(
         session: AsyncSession,
         task_id: UUID,
