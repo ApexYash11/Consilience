@@ -1,7 +1,7 @@
 """Research service logic for task management and orchestration."""
 
 from typing import Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import UUID
 from sqlalchemy.orm import Session
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +14,7 @@ from ..database.schema import (
     ResearchCheckpointDB,
 )
 from ..models.research import TaskStatus, ResearchDepth, ResearchState
+from ..config.timeout_config import WORKER_ID, WORKFLOW_TIMEOUT_TIMEDELTA
 import logging
 
 logger = logging.getLogger(__name__)
@@ -479,6 +480,303 @@ class ResearchService:
         session.add(log_entry)
         await session.commit()
         return log_entry
+
+    # PHASE 3: Task lifecycle management methods
+    
+    @staticmethod
+    async def set_deadline_and_worker(
+        session: AsyncSession,
+        task_id: UUID,
+        worker_id: str = WORKER_ID,
+    ) -> Optional[ResearchTaskDB]:
+        """
+        PHASE 3: Set deadline_at and worker_id when task starts execution.
+        
+        Args:
+            session: AsyncSession for database operations
+            task_id: UUID of the task
+            worker_id: Worker identifier (defaults to CONSILIENCE_WORKER_ID or hostname)
+        
+        Returns:
+            Updated task or None if not found
+        """
+        task = await ResearchService.get_research_task(session, task_id)
+        if not task:
+            return None
+        
+        # Set deadline: now + configured timeout
+        now = datetime.utcnow()
+        deadline = now + WORKFLOW_TIMEOUT_TIMEDELTA
+        
+        # Update task with deadline and worker
+        stmt = (
+            update(ResearchTaskDB)
+            .where(ResearchTaskDB.id == task_id)
+            .values(
+                deadline_at=deadline,
+                worker_id=worker_id,
+                last_heartbeat_at=now,
+            )
+        )
+        
+        await session.execute(stmt)
+        await session.commit()
+        
+        logger.info(
+            f"[Phase 3] Set deadline and worker for task {task_id}: "
+            f"deadline={deadline}, worker={worker_id}"
+        )
+        
+        return await ResearchService.get_research_task(session, task_id)
+
+    @staticmethod
+    def is_deadline_exceeded(task: ResearchTaskDB) -> bool:
+        """
+        PHASE 3: Check if task has exceeded its deadline.
+        
+        Args:
+            task: ResearchTaskDB record
+        
+        Returns:
+            True if deadline_at exists and is in the past, False otherwise
+        """
+        if not hasattr(task, 'deadline_at') or task.deadline_at is None:
+            return False
+        
+        now = datetime.utcnow()
+        return now > task.deadline_at
+
+    @staticmethod
+    def get_remaining_time(task: ResearchTaskDB) -> Optional[float]:
+        """
+        PHASE 3: Get remaining time in seconds until deadline.
+        
+        Args:
+            task: ResearchTaskDB record
+        
+        Returns:
+            Remaining seconds, or None if no deadline set
+        """
+        if not hasattr(task, 'deadline_at') or task.deadline_at is None:
+            return None
+        
+        now = datetime.utcnow()
+        if now > task.deadline_at:
+            return 0.0
+        
+        remaining = (task.deadline_at - now).total_seconds()
+        return max(0.0, remaining)
+
+    @staticmethod
+    def get_remaining_time_static(deadline_at: Optional[datetime]) -> Optional[float]:
+        """
+        PHASE 3: Get remaining time in seconds until a deadline.
+        
+        Static version that takes a datetime directly (doesn't require a task object).
+        
+        Args:
+            deadline_at: Deadline datetime
+        
+        Returns:
+            Remaining seconds, or None if deadline is None
+        """
+        if deadline_at is None:
+            return None
+        
+        now = datetime.utcnow()
+        if now > deadline_at:
+            return 0.0
+        
+        remaining = (deadline_at - now).total_seconds()
+        return max(0.0, remaining)
+
+    @staticmethod
+    def is_task_terminal(status: TaskStatus) -> bool:
+        """
+        PHASE 3: Check if task is in a terminal state.
+        
+        Terminal states: COMPLETED, FAILED, CANCELLED
+        Non-terminal: PENDING, RUNNING, PAUSED
+        
+        Args:
+            status: TaskStatus enum
+        
+        Returns:
+            True if status is terminal
+        """
+        terminal_states = {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED}
+        return status in terminal_states
+
+    @staticmethod
+    async def validate_state_transition(
+        session: AsyncSession,
+        task_id: UUID,
+        old_status: TaskStatus,
+        new_status: TaskStatus,
+    ) -> bool:
+        """
+        PHASE 3: Validate task state transitions.
+        
+        Valid transitions:
+        - PENDING → RUNNING
+        - RUNNING → COMPLETED
+        - RUNNING → FAILED
+        - RUNNING → CANCELLED (or any → CANCELLED for safety)
+        
+        Args:
+            session: AsyncSession for database operations
+            task_id: UUID of task
+            old_status: Current status
+            new_status: Desired new status
+        
+        Returns:
+            True if transition is valid
+        """
+        task = await ResearchService.get_research_task(session, task_id)
+        if not task:
+            logger.warning(f"[Phase 3] Cannot validate transition for non-existent task {task_id}")
+            return False
+        
+        current_actual = getattr(task, 'status', old_status)
+        
+        # If already in terminal state, no transitions allowed except to CANCELLED for safety
+        if ResearchService.is_task_terminal(current_actual):
+            if new_status == TaskStatus.CANCELLED:
+                logger.info(f"[Phase 3] Allowing CANCELLED transition for already-terminal task {task_id}")
+                return True
+            logger.warning(
+                f"[Phase 3] Transition to {new_status} rejected: task {task_id} already in terminal state {current_actual}"
+            )
+            return False
+        
+        # Allow any non-terminal → CANCELLED for safety (cleanup after crash)
+        if new_status == TaskStatus.CANCELLED:
+            return True
+        
+        # Define valid transitions
+        valid_transitions = {
+            TaskStatus.PENDING: {TaskStatus.RUNNING, TaskStatus.CANCELLED},
+            TaskStatus.RUNNING: {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED},
+            TaskStatus.PAUSED: {TaskStatus.RUNNING, TaskStatus.FAILED, TaskStatus.CANCELLED},
+        }
+        
+        allowed_next_states = valid_transitions.get(current_actual, set())
+        is_valid = new_status in allowed_next_states
+        
+        if not is_valid:
+            logger.warning(
+                f"[Phase 3] Invalid state transition {current_actual} → {new_status} for task {task_id}"
+            )
+        
+        return is_valid
+
+    @staticmethod
+    async def update_heartbeat(
+        session: AsyncSession,
+        task_id: UUID,
+    ) -> Optional[ResearchTaskDB]:
+        """
+        PHASE 3: Update task heartbeat to signal it's alive.
+        
+        Called periodically during task execution to prevent
+        orphan detection. Non-blocking operation.
+        
+        Args:
+            session: AsyncSession for database operations
+            task_id: UUID of task
+        
+        Returns:
+            Updated task or None if not found
+        """
+        try:
+            now = datetime.utcnow()
+            
+            stmt = (
+                update(ResearchTaskDB)
+                .where(ResearchTaskDB.id == task_id)
+                .values(last_heartbeat_at=now)
+            )
+            
+            result = await session.execute(stmt)
+            await session.commit()
+            
+            if result.rowcount > 0:
+                logger.debug(f"[Phase 3] Heartbeat updated for task {task_id}")
+                return await ResearchService.get_research_task(session, task_id)
+            else:
+                logger.warning(f"[Phase 3] Heartbeat update failed: task {task_id} not found")
+                return None
+                
+        except Exception as e:
+            logger.error(f"[Phase 3] Error updating heartbeat for task {task_id}: {e}")
+            # Don't raise - heartbeat is non-critical
+            return None
+
+    @staticmethod
+    async def mark_timeout(
+        session: AsyncSession,
+        task_id: UUID,
+    ) -> Optional[ResearchTaskDB]:
+        """
+        PHASE 3: Mark task as FAILED due to timeout.
+        
+        Args:
+            session: AsyncSession for database operations
+            task_id: UUID of task
+        
+        Returns:
+            Updated task or None if not found/failed
+        """
+        task = await ResearchService.get_research_task(session, task_id)
+        if not task:
+            return None
+        
+        # Use optimistic locking update
+        return await ResearchService.update_research_task_with_retry(
+            session=session,
+            task_id=task_id,
+            status=TaskStatus.FAILED,
+            error_message="Workflow exceeded global time limit",
+            metadata_json={
+                "error_code": "TIMEOUT",
+                "error_context_json": {
+                    "reason": "workflow exceeded time limit",
+                    "deadline_at": str(task.deadline_at) if task.deadline_at else None,
+                }
+            },
+            max_retries=3,
+        )
+
+    @staticmethod
+    async def mark_orphaned_task(
+        session: AsyncSession,
+        task_id: UUID,
+        reason: str = "Heartbeat timeout",
+    ) -> Optional[ResearchTaskDB]:
+        """
+        PHASE 3: Mark task as FAILED due to being orphaned.
+        
+        Args:
+            session: AsyncSession for database operations
+            task_id: UUID of task
+            reason: Description of why orphaned
+        
+        Returns:
+            Updated task or None if not found/failed
+        """
+        return await ResearchService.update_research_task_with_retry(
+            session=session,
+            task_id=task_id,
+            status=TaskStatus.FAILED,
+            error_message=f"Task recovered as orphaned: {reason}",
+            metadata_json={
+                "error_code": "ORPHANED_TASK",
+                "error_context_json": {
+                    "reason": reason,
+                }
+            },
+            max_retries=3,
+        )
 
     @staticmethod
     async def save_checkpoint(

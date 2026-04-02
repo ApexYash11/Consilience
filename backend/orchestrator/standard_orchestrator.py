@@ -9,6 +9,7 @@ from ..agents.standard.formatter import formatter_node
 from ..models.research import ResearchState, TaskStatus
 from ..services.research_service import ResearchService
 from ..database.connection import AsyncSessionLocal
+from ..config.timeout_config import WORKFLOW_TIMEOUT_SECONDS
 import asyncio
 from datetime import datetime
 from typing import Callable, Optional, Dict, Any
@@ -266,8 +267,6 @@ def create_research_graph():
     # LangGraph sync requires explicit merging without Annotated reducers
     async def merge_researchers(state: ResearchState) -> ResearchState:
         """
-        Merge outputs from parallel researcher agents.
-        
         PHASE 2 FIX: Safely aggregate namespaced researcher outputs.
         Each researcher writes to its own field (researcher_N_output) to prevent
         concurrent write conflicts. This node reads all namespaced outputs and
@@ -282,6 +281,9 @@ def create_research_graph():
         Handles None values and ensures no data loss.
         """
         try:
+            # Import at function level to avoid repeated imports in loop
+            from ..models.research import Source as SourceModel
+            
             # Start with clean aggregates
             merged_sources = []
             total_cost = 0.0
@@ -314,25 +316,56 @@ def create_research_graph():
                 # Extract sources - avoid duplicates by URL
                 if "sources" in output and output["sources"]:
                     for idx, source in enumerate(output["sources"]):
+                        # Extract source identifier - handle both dict and object types
                         source_id = None
-                        if hasattr(source, 'url') and source.url:
-                            source_id = source.url
-                        elif hasattr(source, 'title') and source.title:
-                            source_id = source.title
-                        elif hasattr(source, 'id') and source.id:
-                            source_id = source.id
+                        
+                        # If source is a dict, use .get() to extract fields
+                        if isinstance(source, dict):
+                            source_id = (
+                                source.get('url') or
+                                source.get('title') or
+                                source.get('id')
+                            )
                         else:
+                            # If source is an object, use hasattr/attribute access
+                            if hasattr(source, 'url') and source.url:
+                                source_id = source.url
+                            elif hasattr(source, 'title') and source.title:
+                                source_id = source.title
+                            elif hasattr(source, 'id') and source.id:
+                                source_id = source.id
+                        
+                        # Fallback for sources without identifying fields
+                        if not source_id:
                             source_id = f"anon-{id(source)}"
                             logger.debug(f"[Researcher Merge] Using fallback identifier for source: {source_id}")
                         
-                        if source_id not in seen_urls:
-                            # Convert to Source model if it's a dict
+                        # Skip if already seen
+                        if source_id in seen_urls:
+                            continue
+                        
+                        # Try to add source, skip malformed entries
+                        try:
                             if isinstance(source, dict):
-                                from ..models.research import Source as SourceModel
-                                merged_sources.append(SourceModel(**source))
+                                # Convert dict to Source model with error handling
+                                try:
+                                    source_obj = SourceModel(**source)
+                                    merged_sources.append(source_obj)
+                                    seen_urls.add(source_id)
+                                except (TypeError, ValueError) as e:
+                                    logger.warning(
+                                        f"[Researcher Merge] Skipping malformed source dict: {source}. Error: {e}"
+                                    )
+                                    continue
                             else:
+                                # Source is already an object
                                 merged_sources.append(source)
-                            seen_urls.add(source_id)
+                                seen_urls.add(source_id)
+                        except Exception as e:
+                            logger.error(
+                                f"[Researcher Merge] Unexpected error adding source: {e}", exc_info=True
+                            )
+                            continue
                 
                 # Aggregate tokens and costs
                 if "tokens_used" in output and output["tokens_used"]:
@@ -620,8 +653,23 @@ async def generate_retry_queries(
 _research_graph = create_research_graph()
 
 
-async def run_research(initial_state: ResearchState) -> ResearchState:
-    """Execute research workflow with live metadata persistence at each phase."""
+async def run_research(initial_state: ResearchState, deadline_at: Optional[datetime] = None) -> ResearchState:
+    """
+    Execute research workflow with live metadata persistence at each phase.
+    
+    PHASE 3: Supports global timeout via deadline_at parameter.
+    
+    Args:
+        initial_state: ResearchState to execute
+        deadline_at: Optional deadline datetime. If provided, workflow will timeout if execution exceeds deadline.
+    
+    Returns:
+        Final ResearchState after workflow completes
+    
+    Raises:
+        asyncio.TimeoutError: If workflow exceeds deadline
+        Exception: If workflow encounters an error
+    """
     
     initial_state.start_time = datetime.utcnow()
     initial_state.status = TaskStatus.RUNNING
@@ -640,12 +688,30 @@ async def run_research(initial_state: ResearchState) -> ResearchState:
             }
         }
         
-        # Invoke compiled graph with wrapped nodes that auto-persist after each phase
-        # No need to manually persist after - the node wrappers handle it
-        final_state_dict = await _research_graph.ainvoke(
-            initial_state,
-            config=config  # type: ignore
-        )
+        # PHASE 3: Calculate timeout from deadline
+        timeout_seconds = None
+        if deadline_at:
+            remaining = ResearchService.get_remaining_time_static(deadline_at)
+            if remaining is not None and remaining > 0:
+                timeout_seconds = remaining
+                logger.info(f"[Phase 3] Workflow timeout set to {timeout_seconds:.1f}s for task {initial_state.task_id}")
+            else:
+                logger.error(f"[Phase 3] Deadline already exceeded for task {initial_state.task_id}")
+                raise asyncio.TimeoutError("Deadline exceeded before workflow start")
+        
+        # Invoke compiled graph with optional timeout
+        if timeout_seconds and timeout_seconds > 0:
+            # PHASE 3: Wrap ainvoke with timeout
+            final_state_dict = await asyncio.wait_for(
+                _research_graph.ainvoke(initial_state, config=config),  # type: ignore
+                timeout=timeout_seconds
+            )
+        else:
+            # No timeout configured - run without limit (backward compatible)
+            final_state_dict = await _research_graph.ainvoke(
+                initial_state,
+                config=config  # type: ignore
+            )
         
         # Convert dict back to ResearchState Pydantic model
         final_state = ResearchState(**final_state_dict) if isinstance(final_state_dict, dict) else final_state_dict
@@ -657,10 +723,11 @@ async def run_research(initial_state: ResearchState) -> ResearchState:
         return final_state
         
     except asyncio.TimeoutError as e:
-        logger.error(f"Workflow timeout: {str(e)}")
+        logger.error(f"[Phase 3] Workflow timeout for task {initial_state.task_id}: {str(e)}")
         initial_state.status = TaskStatus.FAILED
         initial_state.end_time = datetime.utcnow()
-        raise
+        # Don't re-raise - let caller handle with timeout cleanup
+        return initial_state
     except Exception as e:
         logger.error(f"Workflow error: {str(e)}", exc_info=True)
         initial_state.status = TaskStatus.FAILED
