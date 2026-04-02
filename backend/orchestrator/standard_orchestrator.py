@@ -181,8 +181,6 @@ def create_research_graph():
         ↓
     MERGE_RESEARCHERS (combine sources/costs from parallel agents)
         ↓
-    VERIFIER (validation)
-        ↓
     VERIFIER (validate sources)
         ├─ If source_quality_score < 0.3 → RESEARCHER-RETRY
         └─ Else → DETECTOR
@@ -285,10 +283,10 @@ def create_research_graph():
             total_tokens = 0
             merged_errors: list[str] = []
             
-            # Extract sources - avoid duplicates by URL
+            # Extract sources - avoid duplicates by URL, with fallback for missing identifiers
             if state.sources:
                 seen_urls = set()
-                for source in state.sources:
+                for idx, source in enumerate(state.sources):
                     # Use URL as unique identifier, fallback to title or id
                     source_id = None
                     if hasattr(source, 'url') and source.url:
@@ -297,10 +295,20 @@ def create_research_graph():
                         source_id = source.title
                     elif hasattr(source, 'id') and source.id:
                         source_id = source.id
+                    else:
+                        # Fallback: use memory address hash for sources without identifying fields
+                        source_id = f"anon-{id(source)}"
+                        logger.debug(
+                            f"[Researcher Merge] Using fallback identifier for source at index {idx}: {source_id}"
+                        )
                     
-                    if source_id and source_id not in seen_urls:
+                    if source_id not in seen_urls:
                         merged_sources.append(source)
                         seen_urls.add(source_id)
+                    else:
+                        logger.debug(
+                            f"[Researcher Merge] Skipping duplicate source with id: {source_id}"
+                        )
             
             # Aggregate costs and tokens
             if state.cost is not None:
