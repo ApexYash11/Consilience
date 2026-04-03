@@ -6,7 +6,9 @@ import json
 import logging
 from functools import reduce
 from langchain_openai import ChatOpenAI
+from langchain_core.messages import HumanMessage
 from typing import Dict, List, Tuple
+from ...services.llm_call_helper import call_llm_sync
 from ...models.research import Contradiction, ResearchState, Source
 from ...config.models import (
     get_model_for_phase,
@@ -245,7 +247,7 @@ Return JSON only:
 }}
 """
 
-    response = llm.invoke(prompt)
+    response = call_llm_sync(llm, [HumanMessage(content=prompt)], agent_name="detector")
     payload = (
         response.content if isinstance(response.content, str) else str(response.content)
     )

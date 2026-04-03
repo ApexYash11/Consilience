@@ -1,6 +1,7 @@
 """Formatter agent that formats and polishes the final paper."""
 
 from langchain_openai import ChatOpenAI
+from langchain_core.messages import HumanMessage
 from typing import List, Tuple, Optional
 import uuid
 from ...models.research import ResearchState, TaskStatus
@@ -11,6 +12,7 @@ from ...config.models import (
     ResearchMode,
     OPENROUTER_CONFIG,
 )
+from ...services.llm_call_helper import call_llm_sync
 import json
 import logging
 
@@ -100,7 +102,7 @@ Paper:
 Return only the formatted paper."""
 
     try:
-        response = llm.invoke(prompt)
+        response = call_llm_sync(llm, [HumanMessage(content=prompt)], agent_name="formatter")
         formatted = (
             response.content
             if isinstance(response.content, str)
@@ -230,7 +232,7 @@ Paper:
 {paper}
 
 Return a revised version of the paper."""
-    response = llm.invoke(prompt)
+    response = call_llm_sync(llm, [HumanMessage(content=prompt)], agent_name="formatter")
     revised = (
         response.content if isinstance(response.content, str) else str(response.content)
     )

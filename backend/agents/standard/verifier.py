@@ -8,6 +8,7 @@ Uses DeepSeek R1 Distill Qwen 7B (free) for verification.
 """
 
 from langchain_openai import ChatOpenAI
+from langchain_core.messages import HumanMessage
 from ...models.research import ResearchState, Source, TaskStatus
 from ...config.models import (
     get_model_for_phase,
@@ -15,6 +16,7 @@ from ...config.models import (
     ResearchMode,
     OPENROUTER_CONFIG,
 )
+from ...services.llm_call_helper import call_llm_sync
 from typing import List
 import json
 import logging
@@ -112,7 +114,7 @@ Return JSON only:
     attempts = 3
     for attempt in range(1, attempts + 1):
         try:
-            response = llm.invoke(prompt)
+            response = call_llm_sync(llm, [HumanMessage(content=prompt)], agent_name="verifier")
             break
         except Exception as e:
             logger.warning(

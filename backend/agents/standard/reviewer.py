@@ -1,6 +1,7 @@
 """Reviewer agent that validates the draft paper."""
 
 from langchain_openai import ChatOpenAI
+from langchain_core.messages import HumanMessage
 from ...models.research import ResearchState, TaskStatus
 from ...config.models import (
     get_model_for_phase,
@@ -8,6 +9,7 @@ from ...config.models import (
     ResearchMode,
     OPENROUTER_CONFIG,
 )
+from ...services.llm_call_helper import call_llm_sync
 import json
 import logging
 from ...utils.cost_estimator import estimate_cost_from_response
@@ -50,7 +52,7 @@ Paper:
 """
 
     try:
-        response = llm.invoke(prompt)
+        response = call_llm_sync(llm, [HumanMessage(content=prompt)], agent_name="reviewer")
         payload = (
             response.content
             if isinstance(response.content, str)
