@@ -107,7 +107,9 @@ DETECTOR_MAX_CONCURRENCY = parse_int_env(
 )
 
 # Minimum comparisons to include (prevents overly aggressive sampling)
-DETECTOR_MIN_COMPARISONS = max(10, DETECTOR_MAX_COMPARISONS // 5)
+# Clamp to ensure min never exceeds max
+base_min = max(10, DETECTOR_MAX_COMPARISONS // 5)
+DETECTOR_MIN_COMPARISONS = min(base_min, DETECTOR_MAX_COMPARISONS)
 
 __all__ = [
     "WORKER_ID",

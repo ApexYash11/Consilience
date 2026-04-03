@@ -69,7 +69,7 @@ async def detector_node_async(state: ResearchState) -> ResearchState:
     async def compare_with_semaphore(source_a: Source, source_b: Source) -> Tuple[Dict, Dict, Source, Source]:
         """Acquire semaphore, run comparison in executor to avoid blocking."""
         async with semaphore:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             verdict, cost_info = await loop.run_in_executor(None, _compare_sources, source_a, source_b, llm)
             return verdict, cost_info, source_a, source_b
     
@@ -186,13 +186,13 @@ def _select_pairs_to_compare(
     # Sort indices by score (highest first)
     sorted_indices = sorted(range(len(all_pairs)), key=lambda i: pair_scores[i], reverse=True)
     
-    # Select top priority pairs
-    priority_count = max(min_comparisons, max_comparisons // 2)
+    # Select top priority pairs (capped to max_comparisons)
+    priority_count = min(max(min_comparisons, max_comparisons // 2), max_comparisons)
     selected_indices: set = set(sorted_indices[:priority_count])
     
     # Randomly sample remaining pairs to fill quota
     remaining_indices = [i for i in sorted_indices[priority_count:]]
-    additional_needed = max_comparisons - len(selected_indices)
+    additional_needed = max(0, max_comparisons - len(selected_indices))
     if remaining_indices and additional_needed > 0:
         additional = random.sample(remaining_indices, min(len(remaining_indices), additional_needed))
         selected_indices.update(additional)

@@ -3,10 +3,20 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { ResearchStatus } from "@/types/research";
 
-// PHASE 5: Adaptive polling configuration
-const POLL_BASE_MS = parseInt(process.env.NEXT_PUBLIC_RESEARCH_POLL_BASE_MS || "2000");
-const POLL_MAX_BACKOFF_MS = parseInt(process.env.NEXT_PUBLIC_RESEARCH_POLL_MAX_BACKOFF_MS || "15000");
-const POLL_JITTER_MS = parseInt(process.env.NEXT_PUBLIC_RESEARCH_POLL_JITTER_MS || "400");
+// PHASE 5: Adaptive polling configuration with radix and NaN validation
+function parsePollConfig(envVar: string | undefined, defaultValue: number): number {
+  if (!envVar) return defaultValue;
+  const parsed = parseInt(envVar, 10);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    console.warn(`Invalid polling config value: "${envVar}", using default: ${defaultValue}ms`);
+    return defaultValue;
+  }
+  return parsed;
+}
+
+const POLL_BASE_MS = parsePollConfig(process.env.NEXT_PUBLIC_RESEARCH_POLL_BASE_MS, 2000);
+const POLL_MAX_BACKOFF_MS = parsePollConfig(process.env.NEXT_PUBLIC_RESEARCH_POLL_MAX_BACKOFF_MS, 15000);
+const POLL_JITTER_MS = parsePollConfig(process.env.NEXT_PUBLIC_RESEARCH_POLL_JITTER_MS, 400);
 
 // Format remaining seconds into human-readable time format
 function formatRemainingTime(seconds: number | string | null | undefined): string | undefined {
@@ -56,6 +66,7 @@ export function useResearchStatus(taskId: string | null): UseResearchStatusRetur
   const [pollInterval, setPollInterval] = useState(POLL_BASE_MS);
   const [consecutiveErrors, setConsecutiveErrors] = useState(0);
   const pollIntervalRef = useRef(pollInterval);
+  const consecutiveErrorsRef = useRef(0);
 
   // Track previous progress to ensure it never goes backward
   const previousProgressRef = useRef<number>(0);
@@ -141,7 +152,10 @@ export function useResearchStatus(taskId: string | null): UseResearchStatusRetur
           const newInterval = Math.min(pollIntervalRef.current * multiplier, POLL_MAX_BACKOFF_MS);
           setPollInterval(newInterval);
           pollIntervalRef.current = newInterval;
-          setConsecutiveErrors(c => c + 1);
+          setConsecutiveErrors(c => {
+            consecutiveErrorsRef.current = c + 1;
+            return c + 1;
+          });
         } else if (response.status === 402 || errorData.error_code === 'QUOTA_EXCEEDED') {
           // Quota exceeded - terminal error, stop polling
           if (isMountedRef.current) {
@@ -150,9 +164,12 @@ export function useResearchStatus(taskId: string | null): UseResearchStatusRetur
           }
           return null;
         } else if (response.status === 401) {
+          // 401 is terminal - stop polling immediately
           if (isMountedRef.current) {
             setError("Unauthorized. Please log in again.");
+            setIsPolling(false);
           }
+          return null;
         } else {
           if (isMountedRef.current) {
             setError(`Failed to fetch status: ${response.statusText}`);
@@ -182,8 +199,9 @@ export function useResearchStatus(taskId: string | null): UseResearchStatusRetur
       }
 
       // PHASE 5: Reset backoff on successful response
-      if (consecutiveErrors > 0) {
+      if (consecutiveErrorsRef.current > 0) {
         setConsecutiveErrors(0);
+        consecutiveErrorsRef.current = 0;
         setPollInterval(POLL_BASE_MS);
         pollIntervalRef.current = POLL_BASE_MS;
       }
@@ -209,7 +227,10 @@ export function useResearchStatus(taskId: string | null): UseResearchStatusRetur
         return null;
       }
 
-      setConsecutiveErrors(c => c + 1);
+      setConsecutiveErrors(c => {
+        consecutiveErrorsRef.current = c + 1;
+        return c + 1;
+      });
       if (isMountedRef.current) {
         const message = err instanceof Error ? err.message : "Unknown error occurred";
         setError(`Failed to fetch status: ${message}`);
@@ -219,7 +240,7 @@ export function useResearchStatus(taskId: string | null): UseResearchStatusRetur
       isFetchingRef.current = false;
       setIsLoading(false);
     }
-  }, [taskId, consecutiveErrors]);
+  }, [taskId]);
 
   useEffect(() => {
     isMountedRef.current = true;
