@@ -10,6 +10,7 @@ from ..models.research import ResearchState, TaskStatus
 from ..services.research_service import ResearchService
 from ..database.connection import AsyncSessionLocal
 from ..config.timeout_config import WORKFLOW_TIMEOUT_SECONDS
+from ..utils.workflow_instrumentation import WorkflowInstrumentation
 import asyncio
 from datetime import datetime
 from typing import Callable, Optional, Dict, Any
@@ -127,43 +128,74 @@ def _create_node_wrapper_with_persistence(
         node_name: Optional name for logging (defaults to node_func.__name__)
     """
     async def wrapped_node(state: ResearchState) -> ResearchState:
-        # Execute the node
-        result_state = await node_func(state)
+        import time
+        agent_name = node_name or node_func.__name__
+        task_id = UUID(state.task_id) if isinstance(state.task_id, str) else state.task_id
+        agent_start_time = time.time()
         
-        # Immediately persist metadata so frontend gets live updates
+        # PHASE 1: Instrumentation - Log agent start
+        WorkflowInstrumentation.log_agent_started(
+            task_id=task_id,
+            agent_name=agent_name,
+            agent_type=step_name,
+        )
+        
         try:
-            task_uuid = (
-                result_state.task_id 
-                if isinstance(result_state.task_id, UUID) 
-                else UUID(result_state.task_id)
+            # Execute the node
+            result_state = await node_func(state)
+            
+            # PHASE 1: Instrumentation - Log agent completion
+            agent_execution_time = time.time() - agent_start_time
+            tokens_used = (result_state.tokens_used or 0) - (state.tokens_used or 0)
+            cost_delta = (result_state.cost or 0.0) - (state.cost or 0.0)
+            
+            WorkflowInstrumentation.log_agent_completed(
+                task_id=task_id,
+                agent_name=agent_name,
+                tokens_used=int(tokens_used) if tokens_used > 0 else 0,
+                cost_usd=max(0.0, cost_delta),
+                execution_time_seconds=agent_execution_time,
             )
             
-            # Prepare sources list from current state
-            sources_list = []
-            if result_state.sources:
-                sources_list = [{
-                    "id": s.id if hasattr(s, 'id') else str(hash(s)),
-                    "title": s.title if hasattr(s, 'title') else str(s),
-                    "authors": s.authors if hasattr(s, 'authors') else "",
-                    "publication": s.publication if hasattr(s, 'publication') else "",
-                    "year": s.year if hasattr(s, 'year') else 0,
-                    "url": s.url if hasattr(s, 'url') else "",
-                    "credibility": s.credibility if hasattr(s, 'credibility') else 0.0,
-                } for s in result_state.sources]
+            # Immediately persist metadata so frontend gets live updates
+            try:
+                # Prepare sources list from current state
+                sources_list = []
+                if result_state.sources:
+                    sources_list = [{
+                        "id": s.id if hasattr(s, 'id') else str(hash(s)),
+                        "title": s.title if hasattr(s, 'title') else str(s),
+                        "authors": s.authors if hasattr(s, 'authors') else "",
+                        "publication": s.publication if hasattr(s, 'publication') else "",
+                        "year": s.year if hasattr(s, 'year') else 0,
+                        "url": s.url if hasattr(s, 'url') else "",
+                        "credibility": s.credibility if hasattr(s, 'credibility') else 0.0,
+                    } for s in result_state.sources]
+                
+                # Persist this phase's progress
+                await _persist_metadata(
+                    task_id=task_id,
+                    current_step=step_name,
+                    sources=sources_list,
+                    tokens_used=result_state.tokens_used or 0,
+                    cost=result_state.cost or 0.0,
+                )
+                logger.info(f"Persisted metadata for step {step_name} (task {result_state.task_id})")
+            except Exception as e:
+                logger.warning(f"Failed to persist metadata for step {step_name}: {e}")
             
-            # Persist this phase's progress
-            await _persist_metadata(
-                task_id=task_uuid,
-                current_step=step_name,
-                sources=sources_list,
-                tokens_used=result_state.tokens_used or 0,
-                cost=result_state.cost or 0.0,
-            )
-            logger.info(f"Persisted metadata for step {step_name} (task {result_state.task_id})")
-        except Exception as e:
-            logger.warning(f"Failed to persist metadata for step {step_name}: {e}")
+            return result_state
         
-        return result_state
+        except Exception as e:
+            # PHASE 1: Instrumentation - Log agent failure
+            agent_execution_time = time.time() - agent_start_time
+            WorkflowInstrumentation.log_agent_failed(
+                task_id=task_id,
+                agent_name=agent_name,
+                error_message=str(e),
+                execution_time_seconds=agent_execution_time,
+            )
+            raise
     
     return wrapped_node
 
@@ -723,10 +755,19 @@ async def run_research(initial_state: ResearchState, deadline_at: Optional[datet
         
     except asyncio.TimeoutError as e:
         logger.error(f"[Phase 3] Workflow timeout for task {initial_state.task_id}: {str(e)}")
+        
+        # PHASE 1: Instrumentation - Log timeout error
+        timeout_str = f"{timeout_seconds:.1f}" if timeout_seconds is not None else "unknown"
+        WorkflowInstrumentation.log_task_failed(
+            task_id=UUID(initial_state.task_id),
+            error_code="TIMEOUT",
+            error_message=f"Workflow exceeded deadline after {timeout_str}s",
+            execution_time_seconds=(datetime.utcnow() - initial_state.start_time).total_seconds(),
+        )
+        
         initial_state.status = TaskStatus.FAILED
         initial_state.end_time = datetime.utcnow()
         # Enrich error context with timeout information
-        timeout_str = f"{timeout_seconds:.1f}" if timeout_seconds is not None else "unknown"
         timeout_error = f"Workflow exceeded deadline after {timeout_str}s"
         if initial_state.errors is None:
             initial_state.errors = []
@@ -740,6 +781,16 @@ async def run_research(initial_state: ResearchState, deadline_at: Optional[datet
         return initial_state
     except Exception as e:
         logger.error(f"Workflow error: {str(e)}", exc_info=True)
+        
+        # PHASE 1: Instrumentation - Log general error
+        error_code = getattr(e, 'error_code', 'INTERNAL_ERROR')
+        WorkflowInstrumentation.log_task_failed(
+            task_id=UUID(initial_state.task_id),
+            error_code=error_code,
+            error_message=str(e),
+            execution_time_seconds=(datetime.utcnow() - initial_state.start_time).total_seconds(),
+        )
+        
         initial_state.status = TaskStatus.FAILED
         initial_state.end_time = datetime.utcnow()
         raise
