@@ -18,7 +18,10 @@ logger = logging.getLogger(__name__)
 
 
 def reviewer_node(state: ResearchState) -> ResearchState:
-    """Run structured peer review on draft paper."""
+    """Run structured peer review on draft paper.
+    
+    PART 4: Enhanced timeout detection for revision loop termination.
+    """
     if not state.draft_paper:
         state.review_feedback = "No draft available for review"
         state.issues_found = ["Draft paper missing"]
@@ -58,9 +61,22 @@ Paper:
             if isinstance(response.content, str)
             else str(response.content)
         )
+    except TimeoutError as e:
+        # PART 4: Timeout detection - mark for retry handler
+        logger.error(f"[PART 4] Reviewer LLM timed out: {e}")
+        state.review_failed = True
+        state.review_feedback = f"Review timed out (60s limit exceeded)"
+        state.issues_found = ["LLM timeout"]
+        state.revision_needed = True  # Request retry
+        logger.info(
+            f"[DEBUG VALIDATION] Reviewer timeout on attempt {state.current_revision_attempt}. "
+            f"Setting review_failed=True for check_revision_and_revise to detect."
+        )
+        return state
     except Exception as e:
-        logger.exception("Reviewer LLM invoke failed")
-        # Record failure state and return safely so workflow can handle it
+        # PART 4: Other exceptions - record failure
+        logger.exception(f"[PART 4] Reviewer LLM invoke failed: {e}")
+        state.review_failed = True
         state.review_feedback = f"Review failed: {str(e)}"
         state.issues_found = ["LLM invoke error"]
         state.revision_needed = True
@@ -71,11 +87,14 @@ Paper:
         result = json.loads(payload)
     except json.JSONDecodeError:
         logger.warning("Reviewer response could not be parsed as JSON")
+        state.review_failed = True
         state.review_feedback = "Review LLM failed to return parseable output"
         state.issues_found = ["JSON parse failure"]
         state.revision_needed = True
         return state
 
+    # Success case
+    state.review_failed = False
     state.review_feedback = result.get("feedback", "No feedback provided")
     state.issues_found = result.get("issues", [])
     state.revision_needed = result.get("revision_needed", False)

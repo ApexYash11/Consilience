@@ -152,10 +152,11 @@ async_engine = create_async_engine(
     future=True,
     pool_pre_ping=True,
     echo=False,
-    pool_size=20,
-    max_overflow=0,
-    pool_recycle=3600,
-    connect_args=async_connect_args,
+    pool_size=5,
+    max_overflow=10,
+    pool_recycle=600,  # Faster recycle for Windows asyncpg stability
+    pool_timeout=30,  # Explicit timeout for connection acquisition
+    connect_args={**async_connect_args, "timeout": 30} if "sqlite" not in ASYNC_DATABASE_URL else async_connect_args,
 )
 
 AsyncSessionLocal = async_sessionmaker(

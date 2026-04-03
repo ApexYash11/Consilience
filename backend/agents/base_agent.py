@@ -112,11 +112,9 @@ class BaseAgent:
             try:
                 # Apply circuit breaker + retry wrapper for consistency with queue path
                 return await retry_with_backoff(
-                    self.circuit_breaker.call(
-                        self._ensure_llm_call(llm_func, *args, **kwargs)
-                    ),
-                    retry_config=self.retry_config,
-                    operation_name=f"{self.agent_name}_llm_call"
+                    lambda: llm_func(*args, **kwargs),
+                    config=self.retry_config,
+                    circuit_breaker=self.circuit_breaker,
                 )
             except asyncio.TimeoutError:
                 logger.error(

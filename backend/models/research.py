@@ -144,6 +144,7 @@ class ResearchState(BaseModel):
     review_feedback: str = ""
     issues_found: List[str] = Field(default_factory=list)
     revision_needed: bool = False
+    review_failed: bool = False  # PART 4: Track if reviewer timed out or failed
 
     # Formatter output
     final_paper: str = ""
@@ -169,6 +170,8 @@ class ResearchState(BaseModel):
     max_revision_attempts: int = 2  # Prevent infinite loops
     current_revision_attempt: int = 0  # Track current attempt
     fallback_triggered: bool = False  # Did we trigger fallback search?
+    max_fallback_attempts: int = 2  # Limit fallback retry loops
+    current_fallback_attempt: int = 0  # Track fallback retry attempts
 
     class Config:
         """Pydantic config for serialization."""
