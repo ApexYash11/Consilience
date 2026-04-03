@@ -1,10 +1,11 @@
 """Research service logic for task management and orchestration."""
 
 from typing import Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import UUID
 from sqlalchemy.orm import Session
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import update, select
 
 from ..database.schema import (
     ResearchTaskDB,
@@ -13,6 +14,7 @@ from ..database.schema import (
     ResearchCheckpointDB,
 )
 from ..models.research import TaskStatus, ResearchDepth, ResearchState
+from ..config.timeout_config import WORKER_ID, WORKFLOW_TIMEOUT_TIMEDELTA
 import logging
 
 logger = logging.getLogger(__name__)
@@ -132,6 +134,120 @@ class ResearchService:
         tasks = list(result.scalars().all())
         
         return tasks, total_count
+
+    @staticmethod
+    async def update_research_task_with_retry(
+        session: AsyncSession,
+        task_id: UUID,
+        status: Optional[TaskStatus] = None,
+        actual_cost_usd: Optional[float] = None,
+        tokens_used: Optional[int] = None,
+        final_state: Optional[ResearchState] = None,
+        error_message: Optional[str] = None,
+        metadata_json: Optional[Dict[str, Any]] = None,
+        max_retries: int = 3,
+    ) -> Optional[ResearchTaskDB]:
+        """
+        PHASE 2 FIX: Update research task with optimistic locking and retry.
+        
+        Uses row_version column for safe concurrent updates. If a concurrent
+        write occurs, this method will retry up to max_retries times, re-fetching
+        the latest state and re-applying the update.
+        
+        Args:
+            session: AsyncSession for database operations
+            task_id: UUID of the task
+            status: New task status
+            actual_cost_usd: Final cost
+            tokens_used: Total tokens
+            final_state: ResearchState with results
+            error_message: Error details
+            metadata_json: Additional metadata
+            max_retries: Maximum retry attempts (default 3)
+        
+        Returns:
+            Updated ResearchTaskDB or None if not found
+        """
+        for attempt in range(max_retries):
+            try:
+                # Fetch current task state (gets current row_version)
+                task = await ResearchService.get_research_task(session, task_id)
+                if not task:
+                    return None
+                
+                # Get current row_version before modification
+                current_version = getattr(task, 'row_version', 0) or 0
+                
+                # Build update dict with only the fields being changed
+                update_dict = {}
+                
+                if status is not None:
+                    update_dict['status'] = status
+                    # Update timing based on status
+                    if status == TaskStatus.RUNNING and (not hasattr(task, 'started_at') or task.started_at is None):
+                        update_dict['started_at'] = datetime.utcnow()
+                    elif status in (TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED):
+                        update_dict['completed_at'] = datetime.utcnow()
+                
+                if actual_cost_usd is not None:
+                    update_dict['actual_cost_usd'] = actual_cost_usd
+                
+                if tokens_used is not None:
+                    update_dict['tokens_used'] = tokens_used
+                
+                if final_state:
+                    update_dict['final_state_json'] = final_state.dict()
+                
+                if error_message:
+                    update_dict['error_message'] = error_message
+                
+                if metadata_json:
+                    update_dict['metadata_json'] = metadata_json
+                
+                # Increment row_version for optimistic lock
+                update_dict['row_version'] = current_version + 1
+                
+                # Execute UPDATE with optimistic lock condition
+                # Only update if row_version matches what we read
+                stmt = (
+                    update(ResearchTaskDB)
+                    .where(ResearchTaskDB.id == task_id)
+                    .where(ResearchTaskDB.row_version == current_version)
+                    .values(**update_dict)
+                )
+                
+                result = await session.execute(stmt)
+                await session.commit()
+                
+                if result.rowcount == 0:
+                    # Optimistic lock failed - another writer modified this row
+                    if attempt < max_retries - 1:
+                        logger.warning(
+                            f"Optimistic lock conflict on task {task_id}, attempt {attempt + 1}/{max_retries}. Retrying..."
+                        )
+                        # Refresh session to discard stale state
+                        await session.rollback()
+                        continue
+                    else:
+                        logger.error(
+                            f"Optimistic lock conflict on task {task_id} after {max_retries} retries. Giving up."
+                        )
+                        return None
+                
+                # Success - fetch updated task and return
+                task = await ResearchService.get_research_task(session, task_id)
+                logger.info(f"Updated research task {task_id} to status {status} (row_version={current_version} -> {current_version + 1})")
+                return task
+                
+            except Exception as e:
+                logger.error(f"Error updating research task {task_id} (attempt {attempt + 1}/{max_retries}): {e}")
+                await session.rollback()
+                if attempt == max_retries - 1:
+                    raise
+                # Retry on any exception
+                continue
+        
+        return None
 
     @staticmethod
     async def update_research_task(
@@ -364,6 +480,496 @@ class ResearchService:
         session.add(log_entry)
         await session.commit()
         return log_entry
+
+    # PHASE 3: Task lifecycle management methods
+    
+    @staticmethod
+    async def set_deadline_and_worker(
+        session: AsyncSession,
+        task_id: UUID,
+        worker_id: str = WORKER_ID,
+    ) -> Optional[ResearchTaskDB]:
+        """
+        PHASE 3: Set deadline_at and worker_id when task starts execution.
+        
+        Args:
+            session: AsyncSession for database operations
+            task_id: UUID of the task
+            worker_id: Worker identifier (defaults to CONSILIENCE_WORKER_ID or hostname)
+        
+        Returns:
+            Updated task or None if not found
+        """
+        task = await ResearchService.get_research_task(session, task_id)
+        if not task:
+            return None
+        
+        # Set deadline: now + configured timeout
+        now = datetime.utcnow()
+        deadline = now + WORKFLOW_TIMEOUT_TIMEDELTA
+        
+        # Update task with deadline and worker
+        stmt = (
+            update(ResearchTaskDB)
+            .where(ResearchTaskDB.id == task_id)
+            .values(
+                deadline_at=deadline,
+                worker_id=worker_id,
+                last_heartbeat_at=now,
+            )
+        )
+        
+        await session.execute(stmt)
+        await session.commit()
+        
+        logger.info(
+            f"[Phase 3] Set deadline and worker for task {task_id}: "
+            f"deadline={deadline}, worker={worker_id}"
+        )
+        
+        return await ResearchService.get_research_task(session, task_id)
+
+    @staticmethod
+    def is_deadline_exceeded(task: ResearchTaskDB) -> bool:
+        """
+        PHASE 3: Check if task has exceeded its deadline.
+        
+        Args:
+            task: ResearchTaskDB record
+        
+        Returns:
+            True if deadline_at exists and is in the past, False otherwise
+        """
+        if not hasattr(task, 'deadline_at') or task.deadline_at is None:
+            return False
+        
+        now = datetime.utcnow()
+        return now > task.deadline_at
+
+    @staticmethod
+    def get_remaining_time(task: ResearchTaskDB) -> Optional[float]:
+        """
+        PHASE 3: Get remaining time in seconds until deadline.
+        
+        Args:
+            task: ResearchTaskDB record
+        
+        Returns:
+            Remaining seconds, or None if no deadline set
+        """
+        if not hasattr(task, 'deadline_at') or task.deadline_at is None:
+            return None
+        
+        now = datetime.utcnow()
+        if now > task.deadline_at:
+            return 0.0
+        
+        remaining = (task.deadline_at - now).total_seconds()
+        return max(0.0, remaining)
+
+    @staticmethod
+    def get_remaining_time_static(deadline_at: Optional[datetime]) -> Optional[float]:
+        """
+        PHASE 3: Get remaining time in seconds until a deadline.
+        
+        Static version that takes a datetime directly (doesn't require a task object).
+        
+        Args:
+            deadline_at: Deadline datetime
+        
+        Returns:
+            Remaining seconds, or None if deadline is None
+        """
+        if deadline_at is None:
+            return None
+        
+        now = datetime.utcnow()
+        if now > deadline_at:
+            return 0.0
+        
+        remaining = (deadline_at - now).total_seconds()
+        return max(0.0, remaining)
+
+    @staticmethod
+    def is_task_terminal(status: TaskStatus) -> bool:
+        """
+        PHASE 3: Check if task is in a terminal state.
+        
+        Terminal states: COMPLETED, FAILED, CANCELLED
+        Non-terminal: PENDING, RUNNING, PAUSED
+        
+        Args:
+            status: TaskStatus enum
+        
+        Returns:
+            True if status is terminal
+        """
+        terminal_states = {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED}
+        return status in terminal_states
+
+    @staticmethod
+    async def validate_state_transition(
+        session: AsyncSession,
+        task_id: UUID,
+        old_status: TaskStatus,
+        new_status: TaskStatus,
+    ) -> bool:
+        """
+        PHASE 3: Validate task state transitions.
+        
+        Valid transitions:
+        - PENDING → RUNNING
+        - RUNNING → COMPLETED
+        - RUNNING → FAILED
+        - RUNNING → CANCELLED (or any → CANCELLED for safety)
+        
+        Args:
+            session: AsyncSession for database operations
+            task_id: UUID of task
+            old_status: Current status
+            new_status: Desired new status
+        
+        Returns:
+            True if transition is valid
+        """
+        task = await ResearchService.get_research_task(session, task_id)
+        if not task:
+            logger.warning(f"[Phase 3] Cannot validate transition for non-existent task {task_id}")
+            return False
+        
+        current_actual = getattr(task, 'status', old_status)
+        
+        # If already in terminal state, no transitions allowed except to CANCELLED for safety
+        if ResearchService.is_task_terminal(current_actual):
+            if new_status == TaskStatus.CANCELLED:
+                logger.info(f"[Phase 3] Allowing CANCELLED transition for already-terminal task {task_id}")
+                return True
+            logger.warning(
+                f"[Phase 3] Transition to {new_status} rejected: task {task_id} already in terminal state {current_actual}"
+            )
+            return False
+        
+        # Allow any non-terminal → CANCELLED for safety (cleanup after crash)
+        if new_status == TaskStatus.CANCELLED:
+            return True
+        
+        # Define valid transitions
+        valid_transitions = {
+            TaskStatus.PENDING: {TaskStatus.RUNNING, TaskStatus.CANCELLED},
+            TaskStatus.RUNNING: {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED},
+            TaskStatus.PAUSED: {TaskStatus.RUNNING, TaskStatus.FAILED, TaskStatus.CANCELLED},
+        }
+        
+        allowed_next_states = valid_transitions.get(current_actual, set())
+        is_valid = new_status in allowed_next_states
+        
+        if not is_valid:
+            logger.warning(
+                f"[Phase 3] Invalid state transition {current_actual} → {new_status} for task {task_id}"
+            )
+        
+        return is_valid
+
+    @staticmethod
+    async def update_heartbeat(
+        session: AsyncSession,
+        task_id: UUID,
+    ) -> Optional[ResearchTaskDB]:
+        """
+        PHASE 3: Update task heartbeat to signal it's alive.
+        
+        Called periodically during task execution to prevent
+        orphan detection. Non-blocking operation.
+        
+        Args:
+            session: AsyncSession for database operations
+            task_id: UUID of task
+        
+        Returns:
+            Updated task or None if not found
+        """
+        try:
+            now = datetime.utcnow()
+            
+            stmt = (
+                update(ResearchTaskDB)
+                .where(ResearchTaskDB.id == task_id)
+                .values(last_heartbeat_at=now)
+            )
+            
+            result = await session.execute(stmt)
+            await session.commit()
+            
+            if result.rowcount > 0:
+                logger.debug(f"[Phase 3] Heartbeat updated for task {task_id}")
+                return await ResearchService.get_research_task(session, task_id)
+            else:
+                logger.warning(f"[Phase 3] Heartbeat update failed: task {task_id} not found")
+                return None
+                
+        except Exception as e:
+            await session.rollback()
+            logger.exception(f"[Phase 3] Error updating heartbeat for task {task_id}: {e}")
+            # Don't raise - heartbeat is non-critical
+            return None
+
+    @staticmethod
+    async def mark_timeout(
+        session: AsyncSession,
+        task_id: UUID,
+    ) -> Optional[ResearchTaskDB]:
+        """
+        PHASE 3: Mark task as FAILED due to timeout.
+        
+        Args:
+            session: AsyncSession for database operations
+            task_id: UUID of task
+        
+        Returns:
+            Updated task or None if not found/failed
+        """
+        task = await ResearchService.get_research_task(session, task_id)
+        if not task:
+            return None
+        
+        # Use optimistic locking update
+        return await ResearchService.update_research_task_with_retry(
+            session=session,
+            task_id=task_id,
+            status=TaskStatus.FAILED,
+            error_message="Workflow exceeded global time limit",
+            metadata_json={
+                "error_code": "TIMEOUT",
+                "error_context_json": {
+                    "reason": "workflow exceeded time limit",
+                    "deadline_at": str(task.deadline_at) if task.deadline_at else None,
+                }
+            },
+            max_retries=3,
+        )
+
+    @staticmethod
+    async def mark_orphaned_task(
+        session: AsyncSession,
+        task_id: UUID,
+        reason: str = "Heartbeat timeout",
+    ) -> Optional[ResearchTaskDB]:
+        """
+        PHASE 3: Mark task as FAILED due to being orphaned.
+        
+        Args:
+            session: AsyncSession for database operations
+            task_id: UUID of task
+            reason: Description of why orphaned
+        
+        Returns:
+            Updated task or None if not found/failed
+        """
+        return await ResearchService.update_research_task_with_retry(
+            session=session,
+            task_id=task_id,
+            status=TaskStatus.FAILED,
+            error_message=f"Task recovered as orphaned: {reason}",
+            metadata_json={
+                "error_code": "ORPHANED_TASK",
+                "error_context_json": {
+                    "reason": reason,
+                }
+            },
+            max_retries=3,
+        )
+
+    @staticmethod
+    async def reserve_deep_quota(
+        session: AsyncSession,
+        user_id: UUID,
+    ) -> bool:
+        """
+        PHASE 4: Atomically reserve deep research quota (increment inflight count).
+        
+        Uses transactional UPDATE to safely increment deep_quota_inflight ONLY if
+        total quota available (inflight + actual_usage < monthly_quota).
+        
+        This prevents race conditions where multiple concurrent requests could
+        bypass the quota limit.
+        
+        Args:
+            session: AsyncSession for database operations
+            user_id: UUID of user
+            
+        Returns:
+            True if quota reserved successfully, False if quota exceeded
+            
+        Raises:
+            Exception: On database error
+        """
+        from ..database.schema import UserDB
+        
+        try:
+            # Atomic transactional check-and-increment:
+            # UPDATE users
+            # SET deep_quota_inflight = deep_quota_inflight + 1
+            # WHERE id = ? AND (monthly_deep_quota_used + deep_quota_inflight < monthly_deep_quota)
+            
+            stmt = (
+                update(UserDB)
+                .where(
+                    UserDB.id == user_id,
+                    # Safety check: Allow reserve only if inflight + used < quota
+                    (UserDB.monthly_deep_quota_used + UserDB.deep_quota_inflight) < UserDB.monthly_deep_quota
+                )
+                .values(deep_quota_inflight=UserDB.deep_quota_inflight + 1)
+            )
+            
+            result = await session.execute(stmt)
+            await session.commit()
+            
+            reserved = result.rowcount > 0
+            
+            if reserved:
+                logger.info(
+                    f"[Phase 4] Deep quota reserved for user {user_id} "
+                    f"(inflight now +1)"
+                )
+            else:
+                logger.warning(
+                    f"[Phase 4] Failed to reserve deep quota for user {user_id} "
+                    f"(quota exceeded or user not found)"
+                )
+            
+            return reserved
+            
+        except Exception as e:
+            logger.exception(
+                f"[Phase 4] Error reserving deep quota for user {user_id}: {e}"
+            )
+            await session.rollback()
+            raise
+
+    @staticmethod
+    async def release_deep_quota(
+        session: AsyncSession,
+        user_id: UUID,
+        mark_used: bool = False,
+    ) -> bool:
+        """
+        PHASE 4: Atomically release deep research quota.
+        
+        On task completion: mark_used=True decrements inflight and increments actual usage.
+        On task failure: mark_used=False just decrements inflight (don't count failed task against quota).
+        
+        Args:
+            session: AsyncSession for database operations
+            user_id: UUID of user
+            mark_used: If True, increment monthly_deep_quota_used (count as completed).
+                      If False, just decrement inflight without counting.
+            
+        Returns:
+            True if update succeeded, False otherwise
+            
+        Raises:
+            Exception: On database error
+        """
+        from ..database.schema import UserDB
+        
+        try:
+            if mark_used:
+                # Completion case: decrement inflight AND increment actual usage
+                # Use func.greatest to clamp inflight to 0 (prevent negative)
+                from sqlalchemy import func
+                stmt = (
+                    update(UserDB)
+                    .where(UserDB.id == user_id)
+                    .values(
+                        deep_quota_inflight=func.greatest(UserDB.deep_quota_inflight - 1, 0),
+                        monthly_deep_quota_used=UserDB.monthly_deep_quota_used + 1,
+                    )
+                )
+                logger.debug(
+                    f"[Phase 4] Releasing deep quota for user {user_id} "
+                    f"(marking as used)"
+                )
+            else:
+                # Failure case: just decrement inflight, don't count usage
+                # Use func.greatest to clamp inflight to 0 (prevent negative)
+                from sqlalchemy import func
+                stmt = (
+                    update(UserDB)
+                    .where(UserDB.id == user_id)
+                    .values(
+                        deep_quota_inflight=func.greatest(UserDB.deep_quota_inflight - 1, 0),
+                    )
+                )
+                logger.debug(
+                    f"[Phase 4] Releasing deep quota for user {user_id} "
+                    f"(no usage counted, task failed)"
+                )
+            
+            result = await session.execute(stmt)
+            await session.commit()
+            
+            success = result.rowcount > 0
+            
+            if not success:
+                logger.warning(
+                    f"[Phase 4] Failed to release quota for user {user_id} "
+                    f"(user not found)"
+                )
+            
+            return success
+            
+        except Exception as e:
+            logger.exception(
+                f"[Phase 4] Error releasing deep quota for user {user_id}: {e}"
+            )
+            await session.rollback()
+            raise
+
+    @staticmethod
+    async def get_quota_status(
+        session: AsyncSession,
+        user_id: UUID,
+    ) -> Optional[Dict[str, int]]:
+        """
+        Get current deep quota status for a user.
+        
+        Args:
+            session: AsyncSession for database operations
+            user_id: UUID of user
+            
+        Returns:
+            Dict with keys: quota, used, inflight, available
+            or None if user not found
+        """
+        from ..database.schema import UserDB
+        
+        try:
+            stmt = select(UserDB).where(UserDB.id == user_id)
+            result = await session.execute(stmt)
+            user = result.scalar_one_or_none()
+            
+            if not user:
+                return None
+            
+            quota = user.monthly_deep_quota or 0
+            used = user.monthly_deep_quota_used or 0
+            inflight = user.deep_quota_inflight or 0
+            available = max(0, quota - used - inflight)
+            
+            return {
+                "quota": quota,
+                "used": used,
+                "inflight": inflight,
+                "available": available,
+                "total_reserved": used + inflight,
+            }
+            
+        except Exception as e:
+            logger.exception(
+                f"[Phase 4] Error getting quota status for user {user_id}: {e}"
+            )
+            return None
+
 
     @staticmethod
     async def save_checkpoint(

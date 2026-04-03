@@ -1,6 +1,7 @@
 """Synthesizer agent that builds a draft paper from verified sources."""
 
 from langchain_openai import ChatOpenAI
+from langchain_core.messages import HumanMessage
 from typing import List, Tuple, Dict, Any
 from ...models.research import Contradiction, ResearchState, Source, TaskStatus
 from ...config.models import (
@@ -9,6 +10,7 @@ from ...config.models import (
     ResearchMode,
     OPENROUTER_CONFIG,
 )
+from ...services.llm_call_helper import call_llm_sync
 from ...utils.cost_estimator import estimate_cost_from_response
 import logging
 
@@ -98,7 +100,7 @@ Based on {len(sources)} academic sources.
 
 Return only the section titles, one per line:"""
 
-    response = llm.invoke(prompt)
+    response = call_llm_sync(llm, [HumanMessage(content=prompt)], agent_name="synthesizer")
     text = (
         response.content if isinstance(response.content, str) else str(response.content)
     )
@@ -160,7 +162,7 @@ Use these sources:
 
 Make it 300-500 words, academic tone."""
 
-    response = llm.invoke(prompt)
+    response = call_llm_sync(llm, [HumanMessage(content=prompt)], agent_name="synthesizer")
     content = (
         response.content if isinstance(response.content, str) else str(response.content)
     )

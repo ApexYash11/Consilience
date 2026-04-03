@@ -9,6 +9,8 @@ from ..agents.standard.formatter import formatter_node
 from ..models.research import ResearchState, TaskStatus
 from ..services.research_service import ResearchService
 from ..database.connection import AsyncSessionLocal
+from ..config.timeout_config import WORKFLOW_TIMEOUT_SECONDS
+from ..utils.workflow_instrumentation import WorkflowInstrumentation
 import asyncio
 from datetime import datetime
 from typing import Callable, Optional, Dict, Any
@@ -112,7 +114,7 @@ async def _persist_metadata(
 def _create_node_wrapper_with_persistence(
     node_func,
     step_name: str,
-    node_name: str = None,
+    node_name: str | None = None,
 ):
     """
     Wrap a node function to persist metadata after execution.
@@ -126,43 +128,74 @@ def _create_node_wrapper_with_persistence(
         node_name: Optional name for logging (defaults to node_func.__name__)
     """
     async def wrapped_node(state: ResearchState) -> ResearchState:
-        # Execute the node
-        result_state = await node_func(state)
+        import time
+        agent_name = node_name or node_func.__name__
+        task_id = UUID(state.task_id) if isinstance(state.task_id, str) else state.task_id
+        agent_start_time = time.time()
         
-        # Immediately persist metadata so frontend gets live updates
+        # PHASE 1: Instrumentation - Log agent start
+        WorkflowInstrumentation.log_agent_started(
+            task_id=task_id,
+            agent_name=agent_name,
+            agent_type=step_name,
+        )
+        
         try:
-            task_uuid = (
-                result_state.task_id 
-                if isinstance(result_state.task_id, UUID) 
-                else UUID(result_state.task_id)
+            # Execute the node
+            result_state = await node_func(state)
+            
+            # PHASE 1: Instrumentation - Log agent completion
+            agent_execution_time = time.time() - agent_start_time
+            tokens_used = (result_state.tokens_used or 0) - (state.tokens_used or 0)
+            cost_delta = (result_state.cost or 0.0) - (state.cost or 0.0)
+            
+            WorkflowInstrumentation.log_agent_completed(
+                task_id=task_id,
+                agent_name=agent_name,
+                tokens_used=int(tokens_used) if tokens_used > 0 else 0,
+                cost_usd=max(0.0, cost_delta),
+                execution_time_seconds=agent_execution_time,
             )
             
-            # Prepare sources list from current state
-            sources_list = []
-            if result_state.sources:
-                sources_list = [{
-                    "id": s.id if hasattr(s, 'id') else str(hash(s)),
-                    "title": s.title if hasattr(s, 'title') else str(s),
-                    "authors": s.authors if hasattr(s, 'authors') else "",
-                    "publication": s.publication if hasattr(s, 'publication') else "",
-                    "year": s.year if hasattr(s, 'year') else 0,
-                    "url": s.url if hasattr(s, 'url') else "",
-                    "credibility": s.credibility if hasattr(s, 'credibility') else 0.0,
-                } for s in result_state.sources]
+            # Immediately persist metadata so frontend gets live updates
+            try:
+                # Prepare sources list from current state
+                sources_list = []
+                if result_state.sources:
+                    sources_list = [{
+                        "id": s.id if hasattr(s, 'id') else str(hash(s)),
+                        "title": s.title if hasattr(s, 'title') else str(s),
+                        "authors": s.authors if hasattr(s, 'authors') else "",
+                        "publication": s.publication if hasattr(s, 'publication') else "",
+                        "year": s.year if hasattr(s, 'year') else 0,
+                        "url": s.url if hasattr(s, 'url') else "",
+                        "credibility": s.credibility if hasattr(s, 'credibility') else 0.0,
+                    } for s in result_state.sources]
+                
+                # Persist this phase's progress
+                await _persist_metadata(
+                    task_id=task_id,
+                    current_step=step_name,
+                    sources=sources_list,
+                    tokens_used=result_state.tokens_used or 0,
+                    cost=result_state.cost or 0.0,
+                )
+                logger.info(f"Persisted metadata for step {step_name} (task {result_state.task_id})")
+            except Exception as e:
+                logger.warning(f"Failed to persist metadata for step {step_name}: {e}")
             
-            # Persist this phase's progress
-            await _persist_metadata(
-                task_id=task_uuid,
-                current_step=step_name,
-                sources=sources_list,
-                tokens_used=result_state.tokens_used or 0,
-                cost=result_state.cost or 0.0,
-            )
-            logger.info(f"Persisted metadata for step {step_name} (task {result_state.task_id})")
-        except Exception as e:
-            logger.warning(f"Failed to persist metadata for step {step_name}: {e}")
+            return result_state
         
-        return result_state
+        except Exception as e:
+            # PHASE 1: Instrumentation - Log agent failure
+            agent_execution_time = time.time() - agent_start_time
+            WorkflowInstrumentation.log_agent_failed(
+                task_id=task_id,
+                agent_name=agent_name,
+                error_message=str(e),
+                execution_time_seconds=agent_execution_time,
+            )
+            raise
     
     return wrapped_node
 
@@ -178,6 +211,8 @@ def create_research_graph():
     PLANNER (initial planning)
         ↓
     RESEARCHERS × 5 (parallel)
+        ↓
+    MERGE_RESEARCHERS (combine sources/costs from parallel agents)
         ↓
     VERIFIER (validate sources)
         ├─ If source_quality_score < 0.3 → RESEARCHER-RETRY
@@ -260,6 +295,178 @@ def create_research_graph():
     workflow.add_node("researcher_4", researcher_4_wrapper)
     workflow.add_node("researcher_5", researcher_5_wrapper)
     
+    # Add merge node to combine researcher outputs
+    # LangGraph sync requires explicit merging without Annotated reducers
+    async def merge_researchers(state: ResearchState) -> ResearchState:
+        """
+        PHASE 2 FIX: Safely aggregate namespaced researcher outputs.
+        Each researcher writes to its own field (researcher_N_output) to prevent
+        concurrent write conflicts. This node reads all namespaced outputs and
+        safely merges them into the main state fields.
+        
+        Aggregation logic:
+        - sources: extend unique sources (deduplicate by URL)
+        - cost: sum all researcher costs
+        - tokens_used: sum all researcher tokens
+        - errors: combine all error messages
+        
+        Handles None values and ensures no data loss.
+        """
+        try:
+            # Import at function level to avoid repeated imports in loop
+            from ..models.research import Source as SourceModel
+            
+            # Start with clean aggregates
+            merged_sources = []
+            total_cost = 0.0
+            total_tokens = 0
+            merged_errors: list[str] = []
+            
+            # PHASE 2: Read from all namespaced researcher outputs (0-4)
+            researcher_outputs = []
+            for i in range(5):
+                output_key = f"researcher_{i}_output"
+                output = getattr(state, output_key, None)
+                if output and isinstance(output, dict):
+                    researcher_outputs.append(output)
+                    logger.debug(f"[Researcher Merge] Aggregating output from researcher_{i}")
+            
+            # If no namespaced outputs found, fall back to direct state fields
+            # (for backward compatibility with older state)
+            if not researcher_outputs and state.sources:
+                logger.warning("[Researcher Merge] No namespaced outputs found; using state.sources directly")
+                researcher_outputs = [{
+                    "sources": state.sources or [],
+                    "tokens_used": state.tokens_used or 0,
+                    "cost": state.cost or 0.0,
+                    "errors": state.errors or [],
+                }]
+            
+            # Aggregate all researcher outputs
+            seen_urls = set()
+            for output in researcher_outputs:
+                # Extract sources - avoid duplicates by URL
+                if "sources" in output and output["sources"]:
+                    for idx, source in enumerate(output["sources"]):
+                        # Extract source identifier - handle both dict and object types
+                        source_id = None
+                        
+                        # If source is a dict, use .get() to extract fields
+                        if isinstance(source, dict):
+                            source_id = (
+                                source.get('url') or
+                                source.get('title') or
+                                source.get('id')
+                            )
+                        else:
+                            # If source is an object, use hasattr/attribute access
+                            if hasattr(source, 'url') and source.url:
+                                source_id = source.url
+                            elif hasattr(source, 'title') and source.title:
+                                source_id = source.title
+                            elif hasattr(source, 'id') and source.id:
+                                source_id = source.id
+                        
+                        # Fallback for sources without identifying fields
+                        if not source_id:
+                            source_id = f"anon-{id(source)}"
+                            logger.debug(f"[Researcher Merge] Using fallback identifier for source: {source_id}")
+                        
+                        # Skip if already seen
+                        if source_id in seen_urls:
+                            continue
+                        
+                        # Try to add source, skip malformed entries
+                        try:
+                            if isinstance(source, dict):
+                                # Convert dict to Source model with error handling
+                                try:
+                                    source_obj = SourceModel(**source)
+                                    merged_sources.append(source_obj)
+                                    seen_urls.add(source_id)
+                                except (TypeError, ValueError) as e:
+                                    logger.warning(
+                                        f"[Researcher Merge] Skipping malformed source dict: {source}. Error: {e}"
+                                    )
+                                    continue
+                            else:
+                                # Source is already an object
+                                merged_sources.append(source)
+                                seen_urls.add(source_id)
+                        except Exception as e:
+                            logger.error(
+                                f"[Researcher Merge] Unexpected error adding source: {e}", exc_info=True
+                            )
+                            continue
+                
+                # Aggregate tokens and costs
+                if "tokens_used" in output and output["tokens_used"] is not None:
+                    total_tokens += int(output["tokens_used"])
+                if "cost" in output and output["cost"] is not None:
+                    total_cost += float(output["cost"])
+                
+                # Combine errors
+                if "errors" in output and output["errors"]:
+                    if isinstance(output["errors"], list):
+                        merged_errors.extend(output["errors"])
+                    else:
+                        merged_errors.append(output["errors"])
+            
+            # Log aggregation summary
+            logger.info(
+                f"[Researchers Merged] task_id={state.task_id} | "
+                f"sources={len(merged_sources)} (unique) | "
+                f"cost=${total_cost:.6f} | "
+                f"tokens={total_tokens} | "
+                f"errors={len(merged_errors)}"
+            )
+            
+            # Return aggregated state with cleared namespaced outputs
+            # This ensures downstream nodes don't see the intermediate fields
+            return ResearchState(
+                task_id=state.task_id,
+                topic=state.topic,
+                requirements=state.requirements,
+                num_sources_target=state.num_sources_target,
+                research_queries=state.research_queries,
+                research_plan=state.research_plan,
+                sources=merged_sources,  # Deduplicated aggregates
+                researcher_0_output=None,  # Clear all namespaced fields
+                researcher_1_output=None,
+                researcher_2_output=None,
+                researcher_3_output=None,
+                researcher_4_output=None,
+                verified_sources=state.verified_sources or [],
+                verification_notes=state.verification_notes or "",
+                contradictions=state.contradictions or [],
+                contradiction_analysis=state.contradiction_analysis or "",
+                draft_paper=state.draft_paper or "",
+                draft_outline=state.draft_outline or [],
+                review_feedback=state.review_feedback or "",
+                issues_found=state.issues_found or [],
+                revision_needed=state.revision_needed,
+                final_paper=state.final_paper or "",
+                status=state.status,
+                cost=total_cost,  # Aggregated
+                tokens_used=total_tokens,  # Aggregated
+                start_time=state.start_time,
+                end_time=state.end_time,
+                execution_metrics=state.execution_metrics,
+                errors=merged_errors,  # Combined
+                synthesis_confidence=state.synthesis_confidence,
+                source_quality_score=state.source_quality_score,
+                verifier_rejection_count=state.verifier_rejection_count,
+                max_revision_attempts=state.max_revision_attempts,
+                current_revision_attempt=state.current_revision_attempt,
+                fallback_triggered=state.fallback_triggered,
+            )
+        except Exception as e:
+            logger.error(f"Error merging researchers: {e}", exc_info=True)
+            # Return state as-is if merge fails
+            return state
+    
+    workflow.add_node("merge_researchers", merge_researchers)
+    
     # Wrap major phase nodes
     wrapped_verifier = _create_node_wrapper_with_persistence(verifier_node, "verifying")
     wrapped_detector = _create_node_wrapper_with_persistence(detector_node, "detecting")
@@ -281,22 +488,21 @@ def create_research_graph():
     # Don't add edges from START; use set_entry_point() instead
     
     # PLANNER → RESEARCHERS (5-way fan-out for parallel execution)
-    # LangGraph automatically synchronizes multiple incoming edges to a single node
-    # so the verifier waits for all 5 researchers to complete before proceeding
     workflow.add_edge("planner", "researcher_1")
     workflow.add_edge("planner", "researcher_2")
     workflow.add_edge("planner", "researcher_3")
     workflow.add_edge("planner", "researcher_4")
     workflow.add_edge("planner", "researcher_5")
     
-    # RESEARCHERS → VERIFIER (convergence point)
-    # All 5 researchers feed into verifier, which synchronizes their output
-    # into a single ResearchState with merged sources list
-    workflow.add_edge("researcher_1", "verifier")
-    workflow.add_edge("researcher_2", "verifier")
-    workflow.add_edge("researcher_3", "verifier")
-    workflow.add_edge("researcher_4", "verifier")
-    workflow.add_edge("researcher_5", "verifier")
+    # RESEARCHERS → MERGE (synchronization point)
+    workflow.add_edge("researcher_1", "merge_researchers")
+    workflow.add_edge("researcher_2", "merge_researchers")
+    workflow.add_edge("researcher_3", "merge_researchers")
+    workflow.add_edge("researcher_4", "merge_researchers")
+    workflow.add_edge("researcher_5", "merge_researchers")
+    
+    # MERGE → VERIFIER
+    workflow.add_edge("merge_researchers", "verifier")
     
     # 3. Add CONDITIONAL edges with multi-path routing
     # These edges make intelligent decisions based on state metrics
@@ -479,11 +685,26 @@ async def generate_retry_queries(
 _research_graph = create_research_graph()
 
 
-async def run_research(initial_state: ResearchState) -> ResearchState:
-    """Execute research workflow with live metadata persistence at each phase."""
+async def run_research(initial_state: ResearchState, deadline_at: Optional[datetime] = None) -> ResearchState:
+    """
+    Execute research workflow with live metadata persistence at each phase.
+    
+    PHASE 3: Supports global timeout via deadline_at parameter.
+    
+    Args:
+        initial_state: ResearchState to execute
+        deadline_at: Optional deadline datetime. If provided, workflow will timeout if execution exceeds deadline.
+    
+    Returns:
+        ResearchState: Completed state with status COMPLETED, or FAILED with descriptive error message.
+        On asyncio.TimeoutError: returns initial_state with status=FAILED, end_time set, and error context (does not re-raise).
+    """
     
     initial_state.start_time = datetime.utcnow()
     initial_state.status = TaskStatus.RUNNING
+    
+    # PHASE 3: Initialize timeout_seconds before try block to ensure it's in scope for except handler
+    timeout_seconds = None
     
     try:
         # Prepare LangSmith config with metadata for observability
@@ -499,12 +720,29 @@ async def run_research(initial_state: ResearchState) -> ResearchState:
             }
         }
         
-        # Invoke compiled graph with wrapped nodes that auto-persist after each phase
-        # No need to manually persist after - the node wrappers handle it
-        final_state_dict = await _research_graph.ainvoke(
-            initial_state,
-            config=config  # type: ignore
-        )
+        # PHASE 3: Calculate timeout from deadline
+        if deadline_at:
+            remaining = ResearchService.get_remaining_time_static(deadline_at)
+            if remaining is not None and remaining > 0:
+                timeout_seconds = remaining
+                logger.info(f"[Phase 3] Workflow timeout set to {timeout_seconds:.1f}s for task {initial_state.task_id}")
+            else:
+                logger.error(f"[Phase 3] Deadline already exceeded for task {initial_state.task_id}")
+                raise asyncio.TimeoutError("Deadline exceeded before workflow start")
+        
+        # Invoke compiled graph with optional timeout
+        if timeout_seconds and timeout_seconds > 0:
+            # PHASE 3: Wrap ainvoke with timeout
+            final_state_dict = await asyncio.wait_for(
+                _research_graph.ainvoke(initial_state, config=config),  # type: ignore
+                timeout=timeout_seconds
+            )
+        else:
+            # No timeout configured - run without limit (backward compatible)
+            final_state_dict = await _research_graph.ainvoke(
+                initial_state,
+                config=config  # type: ignore
+            )
         
         # Convert dict back to ResearchState Pydantic model
         final_state = ResearchState(**final_state_dict) if isinstance(final_state_dict, dict) else final_state_dict
@@ -516,12 +754,43 @@ async def run_research(initial_state: ResearchState) -> ResearchState:
         return final_state
         
     except asyncio.TimeoutError as e:
-        logger.error(f"Workflow timeout: {str(e)}")
+        logger.error(f"[Phase 3] Workflow timeout for task {initial_state.task_id}: {str(e)}")
+        
+        # PHASE 1: Instrumentation - Log timeout error
+        timeout_str = f"{timeout_seconds:.1f}" if timeout_seconds is not None else "unknown"
+        WorkflowInstrumentation.log_task_failed(
+            task_id=UUID(initial_state.task_id),
+            error_code="TIMEOUT",
+            error_message=f"Workflow exceeded deadline after {timeout_str}s",
+            execution_time_seconds=(datetime.utcnow() - initial_state.start_time).total_seconds(),
+        )
+        
         initial_state.status = TaskStatus.FAILED
         initial_state.end_time = datetime.utcnow()
-        raise
+        # Enrich error context with timeout information
+        timeout_error = f"Workflow exceeded deadline after {timeout_str}s"
+        if initial_state.errors is None:
+            initial_state.errors = []
+        initial_state.errors.append(timeout_error)
+        if not initial_state.execution_metrics:
+            initial_state.execution_metrics = {}
+        initial_state.execution_metrics['error_code'] = 'TIMEOUT'
+        if timeout_seconds is not None:
+            initial_state.execution_metrics['timeout_seconds'] = timeout_seconds
+        # Don't re-raise - let caller handle with timeout cleanup
+        return initial_state
     except Exception as e:
         logger.error(f"Workflow error: {str(e)}", exc_info=True)
+        
+        # PHASE 1: Instrumentation - Log general error
+        error_code = getattr(e, 'error_code', 'INTERNAL_ERROR')
+        WorkflowInstrumentation.log_task_failed(
+            task_id=UUID(initial_state.task_id),
+            error_code=error_code,
+            error_message=str(e),
+            execution_time_seconds=(datetime.utcnow() - initial_state.start_time).total_seconds(),
+        )
+        
         initial_state.status = TaskStatus.FAILED
         initial_state.end_time = datetime.utcnow()
         raise

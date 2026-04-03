@@ -117,7 +117,16 @@ class ResearchState(BaseModel):
     research_plan: str = ""
 
     # Researchers output - Multiple agents write to this concurrently
-    sources: Annotated[List[Source], _merge_lists] = Field(default_factory=list)
+    # Note: Removed Annotated reducer - orchestrator handles merging explicitly
+    sources: List[Source] = Field(default_factory=list)
+
+    # PHASE 2 FIX: Namespaced researcher outputs to prevent concurrent write conflicts
+    # Each researcher writes to its own field to avoid LangGraph state conflicts
+    researcher_0_output: Optional[Dict[str, Any]] = None
+    researcher_1_output: Optional[Dict[str, Any]] = None
+    researcher_2_output: Optional[Dict[str, Any]] = None
+    researcher_3_output: Optional[Dict[str, Any]] = None
+    researcher_4_output: Optional[Dict[str, Any]] = None
 
     # Verifier output
     verified_sources: List[Source] = Field(default_factory=list)
@@ -140,16 +149,18 @@ class ResearchState(BaseModel):
     final_paper: str = ""
 
     # Metadata - Incremented by concurrent agents
+    # Note: Removed Annotated reducers - orchestrator aggregates explicitly
     status: TaskStatus = TaskStatus.PENDING
-    cost: Annotated[float, _sum_floats] = 0.0
-    tokens_used: Annotated[int, _sum_ints] = 0
+    cost: float = 0.0
+    tokens_used: int = 0
 
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
     execution_metrics: Optional[Dict[str, Any]] = None
 
     # Error handling - Multiple agents can add errors concurrently
-    errors: Annotated[List[str], _merge_lists] = Field(default_factory=list)
+    # Note: Removed Annotated reducer - orchestrator merges explicitly
+    errors: List[str] = Field(default_factory=list)
 
     # Routing decisions (used in conditional edges)
     synthesis_confidence: float = 1.0  # 0.0-1.0, set by Synthesizer

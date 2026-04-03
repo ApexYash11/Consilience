@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import os
+import time
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from uuid import UUID, uuid4
@@ -24,6 +25,9 @@ from ...orchestrator.deep_orchestrator import (
 from ...database.connection import AsyncSessionLocal
 from ...services.deep_cost_estimator import estimate_deep_research_cost
 from ...services.cost_service import CostService
+from ...utils.workflow_instrumentation import WorkflowInstrumentation
+from ...services.heartbeat_service import HeartbeatService
+from ...config.timeout_config import WORKFLOW_TIMEOUT_SECONDS
 
 logger = logging.getLogger(__name__)
 
@@ -139,6 +143,8 @@ async def _persist_metadata_to_db(
     """
     Callback for persisting research metadata updates during execution.
     This enables live progress updates during research execution.
+    
+    PHASE 2 FIX: Uses optimistic locking to prevent concurrent write conflicts.
     """
     try:
         # Get a fresh database session for this async operation
@@ -148,7 +154,7 @@ async def _persist_metadata_to_db(
                 "current_step": current_step,
                 "sources": sources,
                 "model": model,
-                "cost_per_token": cost / tokens_used if tokens_used > 0 else 0.0,  # Calculate from actual values
+                "cost_per_token": cost / tokens_used if tokens_used > 0 else 0.0,
             }
             
             logger.info(
@@ -157,13 +163,14 @@ async def _persist_metadata_to_db(
                 f"tokens={tokens_used}, cost=${cost:.4f}, model={model}"
             )
             
-            # Update task with current progress
-            await ResearchService.update_research_task(
+            # PHASE 2: Use optimistic locking to safely handle concurrent updates
+            await ResearchService.update_research_task_with_retry(
                 session=session,
                 task_id=task_id,
                 tokens_used=tokens_used,
                 actual_cost_usd=cost,
                 metadata_json=metadata,
+                max_retries=3,
             )
     except Exception as e:
         logger.error(f"Failed to persist metadata for task {task_id}: {e}", exc_info=True)
@@ -183,22 +190,37 @@ async def _execute_research_background(
     - Tracks execution flow and costs
     - Enables state snapshots for debugging
     """
+    execution_start_time = time.time()
+    
     try:
         # Set the agent logging and metadata callbacks for this execution
         set_agent_action_logger(_log_agent_action_to_db)
         set_metadata_persistence_callback(_persist_metadata_to_db)
 
-        # Update task status to running
-        await ResearchService.update_research_task(
+        # PHASE 2: Use optimistic locking for status update
+        await ResearchService.update_research_task_with_retry(
             session=session,
             task_id=task_id,
             status=TaskStatus.RUNNING,
+            max_retries=3,
         )
+        
+        # PHASE 3: Set deadline and worker for timeout management
+        await ResearchService.set_deadline_and_worker(session, task_id)
+        
+        # PHASE 3: Start background heartbeat task
+        await HeartbeatService.start_heartbeat(task_id)
         
         # Update heartbeat to signal task is alive (Problem 2: Orphaned Tasks)
         await TaskRecoveryService.update_heartbeat(str(task_id))
         
         logger.info(f"Starting research workflow for task {task_id}")
+        
+        # PHASE 1: Instrumentation - Log task start
+        WorkflowInstrumentation.log_task_started(
+            task_id=task_id,
+            worker_id=os.getenv("CONSILIENCE_WORKER_ID", "unknown-worker"),
+        )
 
         # Fetch task record for metadata
         task_record = await ResearchService.get_research_task(session, task_id)
@@ -235,8 +257,24 @@ async def _execute_research_background(
             if run_id:
                 logger.debug(f"Task {task_id} tracing enabled with run ID: {run_id}")
             
-            # Run the orchestrator
-            final_state = await run_research(state)
+            # PHASE 3: Get deadline for timeout enforcement
+            task_record_for_deadline = await ResearchService.get_research_task(session, task_id)
+            deadline_at = task_record_for_deadline.deadline_at if task_record_for_deadline and hasattr(task_record_for_deadline, 'deadline_at') else None
+            
+            # PHASE 3: Run the orchestrator with timeout handling
+            try:
+                final_state = await run_research(state, deadline_at=deadline_at)
+            except asyncio.TimeoutError:
+                # PHASE 3: Mark task as timeout
+                logger.error(f"Research workflow timeout for task {task_id} after {WORKFLOW_TIMEOUT_SECONDS}s")
+                WorkflowInstrumentation.log_task_failed(
+                    task_id=task_id,
+                    error_code="TIMEOUT",
+                    error_message=f"Task exceeded maximum execution time of {WORKFLOW_TIMEOUT_SECONDS} seconds",
+                    execution_time_seconds=time.time() - execution_start_time,
+                )
+                await ResearchService.mark_timeout(session, task_id)
+                raise
 
             cost = float(final_state.cost or 0.0)
             tokens = final_state.tokens_used or 0
@@ -266,7 +304,17 @@ async def _execute_research_background(
         # Update heartbeat one final time (Problem 2: Orphaned Tasks)
         await TaskRecoveryService.update_heartbeat(str(task_id))
         
-        await ResearchService.update_research_task(
+        # PHASE 1: Instrumentation - Log task completion
+        execution_time = time.time() - execution_start_time
+        WorkflowInstrumentation.log_task_completed(
+            task_id=task_id,
+            tokens_used=tokens,
+            actual_cost=cost,
+            execution_time_seconds=execution_time,
+        )
+        
+        # PHASE 2: Use optimistic locking for final state update
+        await ResearchService.update_research_task_with_retry(
             session=session,
             task_id=task_id,
             status=TaskStatus.COMPLETED,
@@ -274,6 +322,7 @@ async def _execute_research_background(
             tokens_used=tokens,
             final_state=final_state,
             metadata_json=final_metadata,
+            max_retries=3,
         )
         logger.info(
             f"Research workflow completed for task {task_id}: "
@@ -298,6 +347,16 @@ async def _execute_research_background(
             f"Research workflow failed for task {task_id}: {str(e)}", exc_info=True
         )
         
+        # PHASE 1: Instrumentation - Log task failure
+        execution_time = time.time() - execution_start_time
+        error_code = getattr(e, 'error_code', 'INTERNAL_ERROR')
+        WorkflowInstrumentation.log_task_failed(
+            task_id=task_id,
+            error_code=error_code,
+            error_message=str(e),
+            execution_time_seconds=execution_time,
+        )
+        
         # Log failure metric
         log_metric(
             "research_failed",
@@ -307,13 +366,18 @@ async def _execute_research_background(
         # Update heartbeat before marking as failed (Problem 2: Orphaned Tasks)
         await TaskRecoveryService.update_heartbeat(str(task_id))
         
-        await ResearchService.update_research_task(
+        # PHASE 2: Use optimistic locking for failure update
+        await ResearchService.update_research_task_with_retry(
             session=session,
             task_id=task_id,
             status=TaskStatus.FAILED,
             error_message=str(e),
+            max_retries=3,
         )
     finally:
+        # PHASE 3: Stop background heartbeat task
+        await HeartbeatService.stop_heartbeat(task_id)
+        
         # Clean up the task from tracking
         if str(task_id) in _running_tasks:  # type: ignore
             del _running_tasks[str(task_id)]  # type: ignore
@@ -456,6 +520,15 @@ async def create_standard_research(
             estimated_cost_usd=cost_estimate["estimated_cost_usd"],
         )
         logger.info(f"Created research task {task.id} for user {user.user_id}")  # type: ignore
+        
+        # PHASE 1: Instrumentation - Log task creation
+        WorkflowInstrumentation.log_task_created(
+            task_id=task.id,
+            user_id=UUID(user.user_id),  # type: ignore
+            topic=request.topic,
+            research_depth=request.depth.value,
+            estimated_cost=cost_estimate["estimated_cost_usd"],
+        )
 
         # Create ResearchState for workflow
         state = ResearchState(
@@ -1089,6 +1162,8 @@ async def _execute_deep_research_background(
     - Tracks execution flow and multi-agent coordination
     - Enables state snapshots for debugging agent decisions
     """
+    execution_start_time = time.time()
+    
     try:
         # Set the agent logging callback
         set_deep_agent_action_logger(_log_agent_action_to_db)
@@ -1099,6 +1174,12 @@ async def _execute_deep_research_background(
             task_id=task_id,
             status=TaskStatus.RUNNING,
         )
+        
+        # PHASE 3: Set deadline and worker for timeout management
+        await ResearchService.set_deadline_and_worker(session, task_id)
+        
+        # PHASE 3: Start background heartbeat task
+        await HeartbeatService.start_heartbeat(task_id)
         
         # Update heartbeat to signal task is alive (Problem 2: Orphaned Tasks)
         await TaskRecoveryService.update_heartbeat(str(task_id))
@@ -1158,8 +1239,24 @@ async def _execute_deep_research_background(
             if run_id:
                 logger.debug(f"Task {task_id} tracing enabled with run ID: {run_id}")
             
-            # Run the deep research orchestrator
-            final_state = await run_deep_research(state)
+            # PHASE 3: Get deadline for timeout enforcement
+            task_record_for_deadline = await ResearchService.get_research_task(session, task_id)
+            deadline_at = task_record_for_deadline.deadline_at if task_record_for_deadline and hasattr(task_record_for_deadline, 'deadline_at') else None
+            
+            # PHASE 3: Run the deep research orchestrator with timeout handling
+            try:
+                final_state = await run_deep_research(state, deadline_at=deadline_at)
+            except asyncio.TimeoutError:
+                # PHASE 3: Mark task as timeout
+                logger.error(f"Deep research workflow timeout for task {task_id} after {WORKFLOW_TIMEOUT_SECONDS}s")
+                WorkflowInstrumentation.log_task_failed(
+                    task_id=task_id,
+                    error_code="TIMEOUT",
+                    error_message=f"Task exceeded maximum execution time of {WORKFLOW_TIMEOUT_SECONDS} seconds",
+                    execution_time_seconds=time.time() - execution_start_time if 'execution_start_time' in locals() else 0,
+                )
+                await ResearchService.mark_timeout(session, task_id)
+                raise
 
             cost = float(final_state.cost or 0.0)
             tokens = final_state.tokens_used or 0
@@ -1239,6 +1336,9 @@ async def _execute_deep_research_background(
             error_message=str(e),
         )
     finally:
+        # PHASE 3: Stop background heartbeat task
+        await HeartbeatService.stop_heartbeat(task_id)
+        
         # Clean up the task from tracking
         if str(task_id) in _running_tasks:  # type: ignore
             del _running_tasks[str(task_id)]  # type: ignore

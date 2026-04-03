@@ -22,9 +22,17 @@ import time
 from collections import deque
 from datetime import datetime, timedelta
 from typing import Any, Callable, Optional, Coroutine
-from uuid import UUID
+from uuid import UUID, uuid4
 
 logger = logging.getLogger(__name__)
+
+
+class RateLimitedError(Exception):
+    """Exception raised when API rate limit is exceeded."""
+    def __init__(self, message: str, http_status: int = 429, error_code: str = "RATE_LIMIT"):
+        super().__init__(message)
+        self.http_status = http_status
+        self.error_code = error_code
 
 
 class OpenRouterRequestQueue:
@@ -187,7 +195,13 @@ class OpenRouterRequestQueue:
                                     f"[{agent_name}] Rate limited (429) after "
                                     f"{self.max_retries_on_429} retries. Giving up."
                                 )
-                                raise
+                                
+                                # PHASE 4: Raise error with error code and HTTP status
+                                raise RateLimitedError(
+                                    message=f"Rate limited after {self.max_retries_on_429} retries: {error_message}",
+                                    http_status=429,
+                                    error_code="RATE_LIMIT",
+                                )
 
                         # Re-raise non-rate-limit errors
                         raise

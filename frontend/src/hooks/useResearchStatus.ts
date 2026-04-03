@@ -3,7 +3,20 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { ResearchStatus } from "@/types/research";
 
-const POLL_INTERVAL = 2000; // 2 seconds
+// PHASE 5: Adaptive polling configuration with radix and NaN validation
+function parsePollConfig(envVar: string | undefined, defaultValue: number): number {
+  if (!envVar) return defaultValue;
+  const parsed = parseInt(envVar, 10);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    console.warn(`Invalid polling config value: "${envVar}", using default: ${defaultValue}ms`);
+    return defaultValue;
+  }
+  return parsed;
+}
+
+const POLL_BASE_MS = parsePollConfig(process.env.NEXT_PUBLIC_RESEARCH_POLL_BASE_MS, 2000);
+const POLL_MAX_BACKOFF_MS = parsePollConfig(process.env.NEXT_PUBLIC_RESEARCH_POLL_MAX_BACKOFF_MS, 15000);
+const POLL_JITTER_MS = parsePollConfig(process.env.NEXT_PUBLIC_RESEARCH_POLL_JITTER_MS, 400);
 
 // Format remaining seconds into human-readable time format
 function formatRemainingTime(seconds: number | string | null | undefined): string | undefined {
@@ -49,6 +62,12 @@ export function useResearchStatus(taskId: string | null): UseResearchStatusRetur
   const [isLoading, setIsLoading] = useState(true);
   const [isPolling, setIsPolling] = useState(false);
 
+  // PHASE 5: Adaptive polling state
+  const [pollInterval, setPollInterval] = useState(POLL_BASE_MS);
+  const [consecutiveErrors, setConsecutiveErrors] = useState(0);
+  const pollIntervalRef = useRef(pollInterval);
+  const consecutiveErrorsRef = useRef(0);
+
   // Track previous progress to ensure it never goes backward
   const previousProgressRef = useRef<number>(0);
 
@@ -63,6 +82,12 @@ export function useResearchStatus(taskId: string | null): UseResearchStatusRetur
 
   // Problem 5: Frontend Race Conditions - Add AbortController for cancellable requests
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  // PHASE 5: Helper to calculate next poll interval with jitter
+  const getNextPollInterval = useCallback(() => {
+    const jitter = Math.random() * POLL_JITTER_MS - POLL_JITTER_MS / 2;
+    return pollIntervalRef.current + jitter;
+  }, []);
 
   const fetchStatus = useCallback(async (): Promise<ResearchStatus | null> => {
     if (!taskId) {
@@ -108,24 +133,43 @@ export function useResearchStatus(taskId: string | null): UseResearchStatusRetur
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
           },
-          signal, // Problem 5: Pass abort signal to fetch
+          signal,
         }
       );
 
       if (!response.ok) {
-        if (response.status === 401) {
+        let errorData: any = {};
+        try {
+          errorData = await response.json();
+        } catch {
+          // Response body not JSON, use status code
+        }
+
+        // PHASE 5: Adaptive backoff on rate limit and server errors
+        if ([429, 503, 500].includes(response.status) || ['RATE_LIMIT', 'TIMEOUT', 'INTERNAL_ERROR'].includes(errorData.error_code)) {
+          // Exponential backoff: 2x for 429, 1.5x for others
+          const multiplier = response.status === 429 ? 2 : 1.5;
+          const newInterval = Math.min(pollIntervalRef.current * multiplier, POLL_MAX_BACKOFF_MS);
+          setPollInterval(newInterval);
+          pollIntervalRef.current = newInterval;
+          setConsecutiveErrors(c => {
+            consecutiveErrorsRef.current = c + 1;
+            return c + 1;
+          });
+        } else if (response.status === 402 || errorData.error_code === 'QUOTA_EXCEEDED') {
+          // Quota exceeded - terminal error, stop polling
+          if (isMountedRef.current) {
+            setError(errorData.detail || "Quota exceeded");
+            setIsPolling(false);
+          }
+          return null;
+        } else if (response.status === 401) {
+          // 401 is terminal - stop polling immediately
           if (isMountedRef.current) {
             setError("Unauthorized. Please log in again.");
-            // Could trigger redirect to login here
+            setIsPolling(false);
           }
-        } else if (response.status === 429) {
-          if (isMountedRef.current) {
-            setError("Too many requests. Please slow down.");
-          }
-        } else if (response.status >= 500) {
-          if (isMountedRef.current) {
-            setError("Server error. Please try again later.");
-          }
+          return null;
         } else {
           if (isMountedRef.current) {
             setError(`Failed to fetch status: ${response.statusText}`);
@@ -133,7 +177,6 @@ export function useResearchStatus(taskId: string | null): UseResearchStatusRetur
         }
 
         isFetchingRef.current = false;
-        setIsPolling(false);
         setIsLoading(false);
         return null;
       }
@@ -155,6 +198,14 @@ export function useResearchStatus(taskId: string | null): UseResearchStatusRetur
         return null;
       }
 
+      // PHASE 5: Reset backoff on successful response
+      if (consecutiveErrorsRef.current > 0) {
+        setConsecutiveErrors(0);
+        consecutiveErrorsRef.current = 0;
+        setPollInterval(POLL_BASE_MS);
+        pollIntervalRef.current = POLL_BASE_MS;
+      }
+
       // Ensure progress never goes backward
       const validProgress = Math.max(previousProgressRef.current, data.progress || 0);
       if (!isNaN(validProgress)) {
@@ -169,15 +220,17 @@ export function useResearchStatus(taskId: string | null): UseResearchStatusRetur
         setIsPolling(false);
       }
 
-      // Return the fetched data for use in promise callbacks
       return data;
     } catch (err) {
-      // Problem 5: Don't set error if request was aborted (this is expected behavior)
+      // Don't set error if request was aborted (this is expected behavior)
       if (err instanceof Error && err.name === 'AbortError') {
-        // Request was cancelled - this is expected, don't treat as error
         return null;
       }
 
+      setConsecutiveErrors(c => {
+        consecutiveErrorsRef.current = c + 1;
+        return c + 1;
+      });
       if (isMountedRef.current) {
         const message = err instanceof Error ? err.message : "Unknown error occurred";
         setError(`Failed to fetch status: ${message}`);
@@ -185,7 +238,6 @@ export function useResearchStatus(taskId: string | null): UseResearchStatusRetur
       return null;
     } finally {
       isFetchingRef.current = false;
-      setIsPolling(false);
       setIsLoading(false);
     }
   }, [taskId]);
@@ -202,13 +254,14 @@ export function useResearchStatus(taskId: string | null): UseResearchStatusRetur
       }
     });
 
-    // Set up polling
+    // PHASE 5: Set up polling with adaptive interval and jitter
     const setupNextPoll = () => {
       if (!isMountedRef.current) return;
       
       // Stop polling if task is completed or failed
       if (completedRef.current) return;
 
+      const nextInterval = getNextPollInterval();
       timeoutIdRef.current = setTimeout(() => {
         void fetchStatus().then((data) => {
           // Update terminal state based on returned data
@@ -221,7 +274,7 @@ export function useResearchStatus(taskId: string | null): UseResearchStatusRetur
             setupNextPoll();
           }
         });
-      }, POLL_INTERVAL);
+      }, Math.max(POLL_BASE_MS, nextInterval));
     };
 
     setupNextPoll();
@@ -236,7 +289,7 @@ export function useResearchStatus(taskId: string | null): UseResearchStatusRetur
         abortControllerRef.current.abort();
       }
     };
-  }, [fetchStatus]);
+  }, [fetchStatus, getNextPollInterval]);
 
   return {
     status,
