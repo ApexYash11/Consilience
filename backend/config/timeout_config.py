@@ -90,6 +90,25 @@ WORKFLOW_TIMEOUT_TIMEDELTA = timedelta(seconds=WORKFLOW_TIMEOUT_SECONDS)
 HEARTBEAT_INTERVAL_TIMEDELTA = timedelta(seconds=TASK_HEARTBEAT_INTERVAL_SECONDS)
 ORPHAN_TIMEOUT_TIMEDELTA = timedelta(seconds=TASK_ORPHAN_TIMEOUT_SECONDS)
 
+# ============================================================================
+# PHASE 5: Detector Performance Optimization Configuration
+# ============================================================================
+
+# Maximum number of source pair comparisons before sampling kicks in (LLM cost optimization)
+DETECTOR_MAX_COMPARISONS = parse_int_env(
+    "CONSILIENCE_DETECTOR_MAX_COMPARISONS", 
+    150  # Default: compare max 150 pairs for 100+ sources
+)
+
+# Maximum concurrent detector comparisons (async batching control)
+DETECTOR_MAX_CONCURRENCY = parse_int_env(
+    "CONSILIENCE_DETECTOR_MAX_CONCURRENCY",
+    5  # Default: 5 concurrent comparisons
+)
+
+# Minimum comparisons to include (prevents overly aggressive sampling)
+DETECTOR_MIN_COMPARISONS = max(10, DETECTOR_MAX_COMPARISONS // 5)
+
 __all__ = [
     "WORKER_ID",
     "WORKFLOW_TIMEOUT_SECONDS",
@@ -99,4 +118,7 @@ __all__ = [
     "WORKFLOW_TIMEOUT_TIMEDELTA",
     "HEARTBEAT_INTERVAL_TIMEDELTA",
     "ORPHAN_TIMEOUT_TIMEDELTA",
+    "DETECTOR_MAX_COMPARISONS",
+    "DETECTOR_MAX_CONCURRENCY",
+    "DETECTOR_MIN_COMPARISONS",
 ]

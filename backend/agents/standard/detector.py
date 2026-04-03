@@ -1,5 +1,10 @@
 """Detector agent that finds contradictions between verified sources."""
 
+import asyncio
+import random
+import json
+import logging
+from functools import reduce
 from langchain_openai import ChatOpenAI
 from typing import Dict, List, Tuple
 from ...models.research import Contradiction, ResearchState, Source
@@ -10,14 +15,18 @@ from ...config.models import (
     ResearchMode,
     OPENROUTER_CONFIG,
 )
-import json
-import logging
 
 logger = logging.getLogger(__name__)
 
 
-def detector_node(state: ResearchState) -> ResearchState:
-    """Compare verified sources to surface contradictions."""
+async def detector_node_async(state: ResearchState) -> ResearchState:
+    """Async implementation: Compare verified sources to surface contradictions with intelligent sampling."""
+    from ...config.timeout_config import (
+        DETECTOR_MAX_COMPARISONS,
+        DETECTOR_MAX_CONCURRENCY,
+        DETECTOR_MIN_COMPARISONS,
+    )
+    
     sources = state.verified_sources or []
     if len(sources) < 2:
         state.contradictions = []
@@ -36,53 +45,79 @@ def detector_node(state: ResearchState) -> ResearchState:
         **OPENROUTER_CONFIG,
     )
 
+    # Generate all possible pairs
+    all_pairs = [(sources[i], sources[j]) for i in range(len(sources)) for j in range(i + 1, len(sources))]
+    total_possible = len(all_pairs)
+    
+    # Determine pairs to compare (PHASE 5: intelligent sampling)
+    if total_possible <= DETECTOR_MAX_COMPARISONS:
+        pairs_to_compare = all_pairs
+        sampling_used = False
+        logger.info(f"[Phase 5] Detector: Comparing all {total_possible} pairs (below threshold)")
+    else:
+        pairs_to_compare = _select_pairs_to_compare(all_pairs, sources, DETECTOR_MAX_COMPARISONS, DETECTOR_MIN_COMPARISONS)
+        sampling_used = True
+        logger.info(f"[Phase 5] Detector: Sampling {len(pairs_to_compare)}/{total_possible} pairs using intelligent prioritization")
+
+    # PHASE 5: Async batching with semaphore control
     contradictions: List[Contradiction] = []
-    comparisons = 0
     total_input_tokens = 0
     total_output_tokens = 0
-
-    for idx, source_a in enumerate(sources):
-        for source_b in sources[idx + 1 :]:
-            comparisons += 1
-            verdict, cost_info = _compare_sources(source_a, source_b, llm)
-            # accumulate token counts per comparison (safely coercing)
-            try:
-                total_input_tokens += int(cost_info.get("input_tokens", 0) or 0)
-            except Exception:
-                total_input_tokens += 0
-            try:
-                total_output_tokens += int(cost_info.get("output_tokens", 0) or 0)
-            except Exception:
-                total_output_tokens += 0
-
-            if verdict.get("contradicts"):
-                contradictions.append(
-                    Contradiction(
-                        source_a_id=source_a.id,
-                        source_b_id=source_b.id,
-                        claim_a=source_a.excerpt or source_a.title,
-                        claim_b=source_b.excerpt or source_b.title,
-                        severity=str(verdict.get("severity", "minor")),
-                        description=str(
-                            verdict.get("description", "Conflicting claims")
-                        ),
-                    )
+    
+    semaphore = asyncio.Semaphore(DETECTOR_MAX_CONCURRENCY)
+    
+    async def compare_with_semaphore(source_a: Source, source_b: Source) -> Tuple[Dict, Dict, Source, Source]:
+        """Acquire semaphore, run comparison in executor to avoid blocking."""
+        async with semaphore:
+            loop = asyncio.get_event_loop()
+            verdict, cost_info = await loop.run_in_executor(None, _compare_sources, source_a, source_b, llm)
+            return verdict, cost_info, source_a, source_b
+    
+    # Create and await all comparison tasks
+    tasks = [compare_with_semaphore(a, b) for a, b in pairs_to_compare]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    # Process results and collect contradictions
+    for result in results:
+        if isinstance(result, Exception):
+            logger.error(f"[Phase 5] Comparison failed: {result}")
+            continue
+        
+        verdict, cost_info, source_a, source_b = result
+        
+        # Accumulate token counts safely
+        try:
+            total_input_tokens += int(cost_info.get("input_tokens", 0) or 0)
+        except Exception:
+            total_input_tokens += 0
+        try:
+            total_output_tokens += int(cost_info.get("output_tokens", 0) or 0)
+        except Exception:
+            total_output_tokens += 0
+        
+        if verdict.get("contradicts"):
+            contradictions.append(
+                Contradiction(
+                    source_a_id=source_a.id,
+                    source_b_id=source_b.id,
+                    claim_a=source_a.excerpt or source_a.title,
+                    claim_b=source_b.excerpt or source_b.title,
+                    severity=str(verdict.get("severity", "minor")),
+                    description=str(verdict.get("description", "Conflicting claims")),
                 )
+            )
 
     state.contradictions = contradictions
-    state.contradiction_analysis = f"Detected {len(contradictions)} contradictions across {comparisons} comparisons."
+    sampling_note = " (sampling applied)" if sampling_used else ""
+    state.contradiction_analysis = f"Detected {len(contradictions)} contradictions across {len(pairs_to_compare)} comparisons{sampling_note}."
+    
     # Update tokens used from actual comparison counts
     computed_tokens = (total_input_tokens or 0) + (total_output_tokens or 0)
-    # conservative fallback per-comparison estimate
     fallback_per_comparison = 150
     if computed_tokens > 0:
         state.tokens_used = (state.tokens_used or 0) + int(computed_tokens)
     else:
-        # conservative fallback per-comparison estimate
-        fallback_per_comparison = 150
-        state.tokens_used = (state.tokens_used or 0) + (
-            comparisons * fallback_per_comparison
-        )
+        state.tokens_used = (state.tokens_used or 0) + (len(pairs_to_compare) * fallback_per_comparison)
 
     # Compute cost using separate input/output pricing
     try:
@@ -94,9 +129,7 @@ def detector_node(state: ResearchState) -> ResearchState:
         output_cost = (total_output_tokens or 0) * cost_per_token_output
 
         if (total_input_tokens or 0) + (total_output_tokens or 0) == 0:
-            # fallback: use comparisons * fallback_per_comparison split conservatively
-            fallback_tokens = comparisons * fallback_per_comparison
-            # assume 30% input, 70% output for fallback
+            fallback_tokens = len(pairs_to_compare) * fallback_per_comparison
             input_cost = int(fallback_tokens * 0.3) * cost_per_token_input
             output_cost = int(fallback_tokens * 0.7) * cost_per_token_output
 
@@ -106,6 +139,84 @@ def detector_node(state: ResearchState) -> ResearchState:
 
     logger.info(state.contradiction_analysis)
     return state
+
+
+def _select_pairs_to_compare(
+    all_pairs: List[Tuple[Source, Source]],
+    sources: List[Source],
+    max_comparisons: int,
+    min_comparisons: int,
+) -> List[Tuple[Source, Source]]:
+    """
+    Intelligently select high-value pairs for comparison.
+    
+    Prioritizes:
+    1. High relevance scores
+    2. Recent sources (by index position)
+    3. Diverse pairings
+    
+    Args:
+        all_pairs: All possible source pairs
+        sources: List of all sources (with index priority)
+        max_comparisons: Maximum pairs to select
+        min_comparisons: Minimum priority pairs to include
+        
+    Returns:
+        Intelligently selected subset of pairs
+    """
+    if not all_pairs:
+        return []
+    
+    if len(all_pairs) <= max_comparisons:
+        return all_pairs
+    
+    # Calculate priority score for each source (relevance + recency)
+    source_priority: Dict[str, float] = {}
+    for idx, source in enumerate(sources):
+        relevance = getattr(source, 'relevance_score', 0) or 0.0
+        recency_bonus = 1.0 / (idx + 1)  # Recent sources get higher bonus
+        source_priority[source.id] = relevance + recency_bonus
+    
+    # Score each pair (sum of source priorities)
+    pair_scores: Dict[int, float] = {}
+    for i, (source_a, source_b) in enumerate(all_pairs):
+        score = source_priority.get(source_a.id, 0.0) + source_priority.get(source_b.id, 0.0)
+        pair_scores[i] = score
+    
+    # Sort indices by score (highest first)
+    sorted_indices = sorted(range(len(all_pairs)), key=lambda i: pair_scores[i], reverse=True)
+    
+    # Select top priority pairs
+    priority_count = max(min_comparisons, max_comparisons // 2)
+    selected_indices: set = set(sorted_indices[:priority_count])
+    
+    # Randomly sample remaining pairs to fill quota
+    remaining_indices = [i for i in sorted_indices[priority_count:]]
+    additional_needed = max_comparisons - len(selected_indices)
+    if remaining_indices and additional_needed > 0:
+        additional = random.sample(remaining_indices, min(len(remaining_indices), additional_needed))
+        selected_indices.update(additional)
+    
+    # Return selected pairs in original order for consistency
+    return [all_pairs[i] for i in sorted(selected_indices)]
+
+
+def detector_node(state: ResearchState) -> ResearchState:
+    """Sync wrapper for detector_node_async to handle both sync and async contexts."""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+    
+    if loop is None:
+        # No running loop - we're in sync context, safe to use asyncio.run
+        return asyncio.run(detector_node_async(state))
+    else:
+        # Already in async context - need to run in thread executor to avoid nested loop
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            future = pool.submit(asyncio.run, detector_node_async(state))
+            return future.result()
 
 
 def _compare_sources(
