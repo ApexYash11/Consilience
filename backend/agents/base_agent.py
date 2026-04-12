@@ -69,7 +69,7 @@ class BaseAgent:
         self,
         llm_func: Callable,
         *args,
-        timeout_seconds: float = 60.0,
+        timeout_seconds: float = 120.0,
         **kwargs,
     ) -> Any:
         """
@@ -82,7 +82,7 @@ class BaseAgent:
             response = await agent.call_llm_with_retry(
                 llm.ainvoke,
                 [HumanMessage(content="prompt")],
-                timeout_seconds=60.0,
+                timeout_seconds=120.0,
             )
         """
 

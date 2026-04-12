@@ -80,7 +80,7 @@ async def researcher_node(
             response = await call_llm_async(
                 llm,
                 [HumanMessage(content=prompt_text)],
-                timeout_seconds=60.0,
+                timeout_seconds=120.0,
                 agent_name=researcher_id,
             )
 
