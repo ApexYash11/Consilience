@@ -12,10 +12,12 @@ from ..database.connection import AsyncSessionLocal
 from ..config.timeout_config import WORKFLOW_TIMEOUT_SECONDS
 from ..utils.workflow_instrumentation import WorkflowInstrumentation
 import asyncio
+import inspect
 from datetime import datetime
-from typing import Callable, Optional, Dict, Any
+from typing import Callable, Optional, Dict, Any, cast
 from uuid import UUID
 import logging
+from langchain_core.runnables import RunnableConfig
 
 logger = logging.getLogger(__name__)
 
@@ -141,8 +143,11 @@ def _create_node_wrapper_with_persistence(
         )
         
         try:
-            # Execute the node
-            result_state = await node_func(state)
+            # Execute the node - handle both async and sync functions
+            if inspect.iscoroutinefunction(node_func):
+                result_state = await node_func(state)
+            else:
+                result_state = node_func(state)
             
             # PHASE 1: Instrumentation - Log agent completion
             agent_execution_time = time.time() - agent_start_time
@@ -523,14 +528,19 @@ def create_research_graph():
         - 0.7-1.0: High quality - credible, fresh, diverse sources
         """
         if state.source_quality_score < 0.3:
-            if state.fallback_triggered:
-                # Already retried once; quality still poor
-                logger.warning(f"Source quality still poor after retry: {state.source_quality_score}")
-                return "detector"  # Proceed with poor data (better than fail)
-            else:
-                logger.info("Source quality low; triggering fallback search")
-                state.fallback_triggered = True
+            if not state.fallback_triggered:
+                # First time seeing poor quality; trigger fallback search
+                logger.info("Source quality low; triggering fallback search (attempt 1)")
+                # NOTE: Don't modify state here - routing function mutations don't persist
+                # The researcher_retry_node will set fallback_triggered = True
                 return "researcher_retry"
+            else:
+                # Already tried fallback; quality still poor
+                logger.warning(
+                    f"Source quality still poor after fallback: {state.source_quality_score}. "
+                    f"Proceeding with available sources."
+                )
+                return "detector"  # Proceed with poor data (better than infinite loop)
         return "detector"
     
     workflow.add_conditional_edges(
@@ -577,34 +587,86 @@ def create_research_graph():
     
     workflow.add_edge("synthesizer_redo", "reviewer")
     
-    # REVIEWER ROUTING: Revision loop with attempt limit
-    # Allows up to max_revision_attempts to fix issues found during review
-    # After max attempts or if no revision needed, proceeds to formatting
-    def route_after_reviewer(state: ResearchState) -> str:
+    # ===== CRITICAL FIX: Post-Reviewer Revision Handler =====
+    # PART 1 & 2: Increment revision count in NODE BODY (persists)
+    # PART 3: No-source short-circuit
+    # PART 4: Reviewer failure handling
+    async def check_revision_and_revise(state: ResearchState) -> ResearchState:
         """
-        Route based on revision feedback:
-        - revision_needed=True AND attempt < max → goes back to synthesizer
-        - revision_needed=False OR attempt >= max → proceeds to formatter
+        FIXED: Increment revision counter in node body (not routing function).
+        Routing function mutations don't persist in LangGraph - node mutations DO.
         
-        Attempt counter prevents infinite revision loops.
-        Max default: 2 revision attempts (synthesis → review → synthesis → review → formatter)
+        PART 3: No-Source Short Circuit
+        PART 4: Reviewer failure handling (timeout detection)
         """
-        if (
-            state.revision_needed 
-            and state.current_revision_attempt < state.max_revision_attempts
-        ):
-            logger.info(
-                f"Revision needed (attempt {state.current_revision_attempt + 1}/"
-                f"{state.max_revision_attempts}); returning to synthesis"
+        # PART 3: No-Source Short Circuit - EXIT immediately if no data
+        if not state.verified_sources or len(state.verified_sources) == 0:
+            logger.warning(
+                f"[HARD STOP - NO DATA] No verified sources. "
+                f"Skipping revision loop, proceeding to formatter."
             )
-            state.current_revision_attempt += 1
-            state.revision_needed = False  # Reset for next cycle
+            state.revision_needed = False
+            return state
+        
+        # If no revision needed, just proceed
+        if not state.revision_needed:
+            logger.debug("No revision needed; proceeding to formatter")
+            return state
+        
+        # PART 1 & 2: INCREMENT ATTEMPT COUNTER (persists in state)
+        state.current_revision_attempt += 1
+        logger.info(
+            f"[REVISION ATTEMPT {state.current_revision_attempt}/{state.max_revision_attempts}] "
+            f"Incrementing counter and checking termination..."
+        )
+        
+        # HARD STOP CONDITION: Enforce maximum revisions
+        if state.current_revision_attempt >= state.max_revision_attempts:
+            logger.warning(
+                f"[HARD STOP - MAX REVISIONS] "
+                f"Reached revision limit ({state.max_revision_attempts}). "
+                f"Exiting loop, proceeding to formatter."
+            )
+            state.revision_needed = False
+            return state
+        
+        # PART 4: Detect reviewer timeout/failure
+        review_failure = getattr(state, 'review_failed', False)
+        if review_failure:
+            logger.error(
+                f"[REVISION FAILURE] Reviewer failed on attempt {state.current_revision_attempt}. "
+                f"Will retry synthesizer unless limit exceeded."
+            )
+        
+        # Keep revision_needed as-is (router will decide based on counter)
+        return state
+    
+    workflow.add_node("check_revision_and_revise", check_revision_and_revise)
+    workflow.add_edge("reviewer", "check_revision_and_revise")  # reviewer → check
+    
+    # ROUTING: Simple check after counter is properly incremented
+    def route_after_revision_check(state: ResearchState) -> str:
+        """
+        PART 5: Route to synthesizer or formatter based on UPDATED counter.
+        Counter was already incremented in check_revision_and_revise node.
+        """
+        if state.revision_needed and state.current_revision_attempt < state.max_revision_attempts:
+            logger.info(
+                f"[DEBUG VALIDATION] Revision attempt: {state.current_revision_attempt} "
+                f"(will continue to synthesizer)"
+            )
             return "synthesizer"
+        
+        logger.info(
+            f"[DEBUG VALIDATION] Revision loop terminating: "
+            f"revision_needed={state.revision_needed}, "
+            f"attempt={state.current_revision_attempt}, max={state.max_revision_attempts}"
+        )
         return "formatter"
     
     workflow.add_conditional_edges(
-        "reviewer",
-        route_after_reviewer,
+        "check_revision_and_revise",
+        route_after_revision_check,
         {
             "synthesizer": "synthesizer",
             "formatter": "formatter",
@@ -630,6 +692,9 @@ async def researcher_retry_node(state: ResearchState) -> ResearchState:
     underrepresented viewpoints, or complementary sources.
     """
     logger.info(f"Running researcher retry (fallback) for task {state.task_id}")
+    
+    # Mark that we've attempted a fallback (persists to next node)
+    state.fallback_triggered = True
     
     # Generate retry queries emphasizing different angles
     retry_queries = await generate_retry_queries(
@@ -732,16 +797,19 @@ async def run_research(initial_state: ResearchState, deadline_at: Optional[datet
         
         # Invoke compiled graph with optional timeout
         if timeout_seconds and timeout_seconds > 0:
-            # PHASE 3: Wrap ainvoke with timeout
+            # PHASE 3: Wrap ainvoke with timeout and custom recursion limit
             final_state_dict = await asyncio.wait_for(
-                _research_graph.ainvoke(initial_state, config=config),  # type: ignore
+                _research_graph.ainvoke(
+                    initial_state, 
+                    config=cast(RunnableConfig, {**config, "recursion_limit": 100})  # Increased limit for fallback retries
+                ),
                 timeout=timeout_seconds
             )
         else:
             # No timeout configured - run without limit (backward compatible)
             final_state_dict = await _research_graph.ainvoke(
                 initial_state,
-                config=config  # type: ignore
+                config=cast(RunnableConfig, {**config, "recursion_limit": 100})
             )
         
         # Convert dict back to ResearchState Pydantic model

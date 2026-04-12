@@ -69,7 +69,7 @@ class BaseAgent:
         self,
         llm_func: Callable,
         *args,
-        timeout_seconds: float = 60.0,
+        timeout_seconds: float = 120.0,
         **kwargs,
     ) -> Any:
         """
@@ -82,7 +82,7 @@ class BaseAgent:
             response = await agent.call_llm_with_retry(
                 llm.ainvoke,
                 [HumanMessage(content="prompt")],
-                timeout_seconds=60.0,
+                timeout_seconds=120.0,
             )
         """
 
@@ -112,11 +112,9 @@ class BaseAgent:
             try:
                 # Apply circuit breaker + retry wrapper for consistency with queue path
                 return await retry_with_backoff(
-                    self.circuit_breaker.call(
-                        self._ensure_llm_call(llm_func, *args, **kwargs)
-                    ),
-                    retry_config=self.retry_config,
-                    operation_name=f"{self.agent_name}_llm_call"
+                    lambda: llm_func(*args, **kwargs),
+                    config=self.retry_config,
+                    circuit_breaker=self.circuit_breaker,
                 )
             except asyncio.TimeoutError:
                 logger.error(

@@ -90,7 +90,7 @@ Respond ONLY with JSON array of 5 queries: ["query1", "query2", "query3", "query
         response = await _planner.call_llm_with_retry(
             llm.ainvoke,
             [HumanMessage(content=prompt)],
-            timeout_seconds=60.0,  # 1 minute per call
+            timeout_seconds=120.0,  # 2 minute per call
         )
 
         # 3. Extract tokens
